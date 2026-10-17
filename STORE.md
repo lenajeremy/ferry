@@ -11,7 +11,8 @@ Everything Ferry needs for TestFlight, the App Store and Google Play: what's rea
 | Export compliance | `ITSAppUsesNonExemptEncryption = NO`: Ferry only uses the encryption built into iOS and Android (TLS) |
 | Android App Bundle, signed with the upload key | `android/app/build/outputs/bundle/release/app-release.aab` (`./gradlew bundleRelease`) |
 | Upload key | `~/.ferry-signing/` (outside the repo). **Back up `ferry-upload.jks` and `upload.properties` in your password manager.** Google can reset a lost upload key, but it takes days |
-| Privacy policy | https://github.com/lenajeremy/ferry/blob/main/PRIVACY.md (also `site/privacy.html`) |
+| Privacy policy | https://ferry-chi.vercel.app/privacy (the same text as `PRIVACY.md`) |
+| Website | https://ferry-chi.vercel.app |
 | Support page | https://github.com/lenajeremy/ferry/issues |
 
 ## Your part

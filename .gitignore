@@ -16,3 +16,6 @@
 /packaging/homebrew/
 .DS_Store
 *.log
+
+# Vercel's link to the site's project
+.vercel/

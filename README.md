@@ -6,7 +6,7 @@ Share photos, videos and any other file between your computer (macOS, Windows or
 - **On the phone,** use the Ferry app for **iPhone** (`ios/`) or **Android** (`android/`), or just the phone's browser.
 - Everything sent lands in a **Ferry** folder in your home folder (`~/Ferry`), and anything you put there yourself is shared too.
 
-The website is in `site/`: the home page, `download.html` (it offers the file for the visitor's system) and the screenshots in `site/img/`. Every download link points at the GitHub release `lenajeremy/ferry` v1.0.0 (`RELEASE` in `site/site.js`).
+The website is live at **https://ferry-chi.vercel.app** (Vercel project `ferry`; redeploy with `cd site && vercel deploy --prod`). It's in `site/`: the home page, `download.html` (it offers the file for the visitor's system) and the screenshots in `site/img/`. Every download link points at the GitHub release `lenajeremy/ferry` v1.0.0 (`RELEASE` in `site/site.js`).
 
 ## The desktop app
 
