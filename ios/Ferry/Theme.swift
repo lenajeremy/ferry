@@ -13,13 +13,16 @@ enum Theme {
     static let ok = dynamic(light: 0x1E9A54, dark: 0x3DD68C)
     static let danger = dynamic(light: 0xD93A2B, dark: 0xFF5F52)
 
-    private static func dynamic(light: UInt32, dark: UInt32) -> Color {
-        Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(hex: dark) : UIColor(hex: light) })
+    /// A colour for light and dark mode. SwiftUI can resolve colours off the main thread (iOS 26
+    /// draws some animations on a render thread), so the provider must be free to run anywhere: a
+    /// main-actor closure here crashed Ferry when tiles animated while selecting.
+    private nonisolated static func dynamic(light: UInt32, dark: UInt32) -> Color {
+        Color(UIColor { @Sendable traits in traits.userInterfaceStyle == .dark ? UIColor(hex: dark) : UIColor(hex: light) })
     }
 }
 
 extension UIColor {
-    convenience init(hex: UInt32) {
+    nonisolated convenience init(hex: UInt32) {
         self.init(red: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255, blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
     }
 }

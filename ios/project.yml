@@ -103,3 +103,20 @@ targets:
       base:
         GENERATE_INFOPLIST_FILE: YES
         PRODUCT_BUNDLE_IDENTIFIER: app.ferry.ios.tests
+  FerryUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: FerryUITests
+    dependencies:
+      - target: Ferry
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: app.ferry.ios.uitests
+        TEST_TARGET_NAME: Ferry
+        SWIFT_VERSION: "5.0"
+        SWIFT_DEFAULT_ACTOR_ISOLATION: nonisolated
+    scheme:
+      testTargets:
+        - FerryUITests

@@ -4,9 +4,9 @@ Everything Ferry needs for TestFlight, the App Store and Google Play: what's rea
 
 ## Where it stands (17 October 2026)
 
-- **TestFlight:** "Ferry File Transfer" (App Store Connect app 6824059394, bundle ID app.ferry.ios). Build 1.0.0 (1) is in internal testing for the "Ferry testers" group. Upload new builds with `ios/upload.sh` and an API key (it builds with the released Xcode; App Store Connect refuses beta Xcodes).
-- **Google Play:** "Ferry File Transfer" (package app.ferry). Release 1 (1.0.0) is out on internal testing to the "Ferry testers" list; testers join at https://play.google.com/apps/internaltest/4701223977154879298. Play App Signing is on.
-- **Before a public release:** store listings and screenshots, Play's app content forms, a closed test (12 testers, 14 days) for this personal Play account, Apple's updated Paid Applications Schedule (the account holder accepts it) and EU trader status, then review on both stores.
+- **TestFlight:** "Ferry File Transfer" (App Store Connect app 6824059394, bundle ID app.ferry.ios). Build 1.0.0 (2), which fixes a crash while selecting files and photos, was uploaded on 18 October 2026 for the "Ferry testers" group (build 1 is still there). Upload new builds with `ios/upload.sh` and an API key (it builds with the released Xcode; App Store Connect refuses beta Xcodes).
+- **Google Play:** "Ferry File Transfer" (package app.ferry). Release 1 (1.0.0) is out on internal testing to the "Ferry testers" list; testers join at https://play.google.com/apps/internaltest/4701223977154879298. Play App Signing is on. On 17 October 2026 the store listing (text, icon, feature graphic, five phone screenshots), category Tools, contact email, all app content forms and a closed test (Alpha: all countries, "Ferry testers", the same 1.0.0 build) went to Google for review. Until that review passes, testers see the temporary name "app.ferry (unreviewed)".
+- **Before a public release:** App Store listing and screenshots, 12 testers in Play's closed test for 14 days (this personal Play account needs it before production), Apple's updated Paid Applications Schedule (the account holder accepts it) and EU trader status, then review on both stores.
 - **The GitHub APK:** register app.ferry and the upload key under Play Console › Android developer verification, so the APK from GitHub keeps installing on certified Android devices.
 
 ## Ready
@@ -79,7 +79,6 @@ Keep "AirDrop" out of both store listings: Apple rejects other products' names i
 ## Still to make
 
 - **App Store screenshots:** 6.9" iPhone (1320 × 2868), three to ten. They're needed for the App Store listing, not for TestFlight.
-- **Google Play graphics:** at least two phone screenshots, a 512 × 512 icon and a 1024 × 500 feature graphic. Internal testing doesn't need them; a public listing does.
 
 ## Later, for the computers
 
