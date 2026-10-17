@@ -10,7 +10,7 @@ settings:
     SWIFT_VERSION: "6.0"
     SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
     SWIFT_APPROACHABLE_CONCURRENCY: YES
-    MARKETING_VERSION: "1.0"
+    MARKETING_VERSION: "1.0.0"
     CURRENT_PROJECT_VERSION: "1"
     CODE_SIGN_STYLE: Automatic
     DEVELOPMENT_TEAM: N58PT393QS
@@ -37,10 +37,10 @@ targets:
           - UIInterfaceOrientationPortrait
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
-        NSLocalNetworkUsageDescription: Ferry finds your Mac on this Wi-Fi and sends files to it directly.
+        NSLocalNetworkUsageDescription: Ferry finds your computers on this Wi-Fi and sends files to them directly.
         NSBonjourServices:
           - _ferry._tcp
-        NSCameraUsageDescription: Ferry uses the camera to scan the code on your Mac's screen.
+        NSCameraUsageDescription: Ferry uses the camera to scan the code on your computer's screen.
         NSPhotoLibraryAddUsageDescription: Ferry saves the photos and videos you choose to your library.
         ITSAppUsesNonExemptEncryption: false
     entitlements:
@@ -71,7 +71,7 @@ targets:
         FerryKeychainGroup: $(AppIdentifierPrefix)app.ferry.shared
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
-        NSLocalNetworkUsageDescription: Ferry sends what you share to your Mac on this Wi-Fi.
+        NSLocalNetworkUsageDescription: Ferry sends what you share to your computer on this Wi-Fi.
         NSExtension:
           NSExtensionPointIdentifier: com.apple.share-services
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController

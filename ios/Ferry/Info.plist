@@ -34,9 +34,9 @@
 		<string>_ferry._tcp</string>
 	</array>
 	<key>NSCameraUsageDescription</key>
-	<string>Ferry uses the camera to scan the code on your Mac's screen.</string>
+	<string>Ferry uses the camera to scan the code on your computer's screen.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Ferry finds your Mac on this Wi-Fi and sends files to it directly.</string>
+	<string>Ferry finds your computers on this Wi-Fi and sends files to them directly.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Ferry saves the photos and videos you choose to your library.</string>
 	<key>UILaunchScreen</key>

@@ -102,7 +102,7 @@ export JAVA_HOME=$(/usr/libexec/java_home -v 21)   # or Homebrew's openjdk@21
 adb install -r app/build/outputs/apk/release/app-release.apk
 ```
 
-The release build is signed with the debug key for sideloading; give it a real signing key before publishing it anywhere. Debug builds pair on launch with `--es ferryQR "<the QR link>"` (as if scanned) or `--es ferryUrl http://… --es ferryCode <code>` (as if typed), and take `--es ferryOpen <name>` / `--ei ferrySelect 3`. To test pairing for real, run the computer with `FERRY_LAN_IS_REMOTE=1` and reach it at its network address: the emulator's 10.0.2.2 arrives as the computer itself.
+Release builds are signed with the upload key in `~/.ferry-signing/` when it's there (kept out of the repo; back it up), else with the debug key. `./gradlew bundleRelease` makes the bundle for Google Play. Debug builds pair on launch with `--es ferryQR "<the QR link>"` (as if scanned) or `--es ferryUrl http://… --es ferryCode <code>` (as if typed), and take `--es ferryOpen <name>` / `--ei ferrySelect 3`. To test pairing for real, run the computer with `FERRY_LAN_IS_REMOTE=1` and reach it at its network address: the emulator's 10.0.2.2 arrives as the computer itself.
 
 ## Computer to computer
 
@@ -140,6 +140,10 @@ ferry -dir ~/Ferry        the shared folder (default ~/Ferry)
       -data <folder>      Ferry's own data (default: Application Support, %AppData% or ~/.config)
       -bonjour=false      don't announce Ferry on the network (the apps find it that way)
 ```
+
+## The app stores
+
+`STORE.md` has everything for TestFlight, the App Store and Google Play: what's ready, the listing text, the privacy answers, notes for review, and the steps that need the developer accounts. `ios/upload.sh` archives the iPhone app and uploads it to App Store Connect. The privacy policy is `PRIVACY.md`.
 
 ## Who can get in
 

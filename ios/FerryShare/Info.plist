@@ -47,6 +47,6 @@
 		<string>$(PRODUCT_MODULE_NAME).ShareViewController</string>
 	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Ferry sends what you share to your Mac on this Wi-Fi.</string>
+	<string>Ferry sends what you share to your computer on this Wi-Fi.</string>
 </dict>
 </plist>

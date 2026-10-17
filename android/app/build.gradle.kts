@@ -1,3 +1,4 @@
+import java.util.Properties
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -15,14 +16,28 @@ android {
         minSdk = 29
         targetSdk = 36
         versionCode = 1
-        versionName = "1.0"
+        versionName = "1.0.0"
+    }
+    // Release builds are signed with the upload key (for Google Play and the GitHub download), kept outside
+    // the project: ~/.ferry-signing/upload.properties, or the file FERRY_SIGNING names. Without it, the debug key.
+    val signing = file(System.getenv("FERRY_SIGNING") ?: "${System.getProperty("user.home")}/.ferry-signing/upload.properties")
+    signingConfigs {
+        if (signing.exists()) {
+            val p = Properties().apply { signing.inputStream().use { load(it) } }
+            create("upload") {
+                storeFile = file(p.getProperty("storeFile"))
+                storePassword = p.getProperty("storePassword")
+                keyAlias = p.getProperty("keyAlias")
+                keyPassword = p.getProperty("keyPassword")
+            }
+        }
     }
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("upload") ?: signingConfigs.getByName("debug")
         }
     }
     compileOptions {

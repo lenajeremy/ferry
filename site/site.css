@@ -238,3 +238,13 @@ td a:hover { text-decoration-color: var(--ink-3); }
 .compare .no { color: var(--ink-3); font-size: 1.2rem; }
 @media (max-width: 480px) { .compare th, .compare td { padding: 13px 10px; } .compare tbody td { width: 64px; } }
 footer .legal { flex-basis: 100%; margin: 0; font-size: 0.85rem; color: var(--ink-3); }
+
+/* Privacy policy */
+.legal-page { max-width: 44rem; padding-block: clamp(32px, 6vw, 72px) clamp(56px, 8vw, 96px); }
+.legal-page h1 { font-size: clamp(2.2rem, 5vw, 3.2rem); letter-spacing: -0.045em; line-height: 1.05; }
+.legal-page h1 + p { color: var(--ink-3); margin-top: 10px; }
+.legal-page h2 { font-size: 1.35rem; letter-spacing: -0.02em; margin-top: 40px; }
+.legal-page p, .legal-page li { color: var(--ink-2); margin-top: 12px; }
+.legal-page ul { padding-left: 1.2em; margin: 0; }
+.legal-page b { color: var(--ink); font-weight: 500; }
+.legal-page a { color: var(--accent); text-underline-offset: 3px; }
