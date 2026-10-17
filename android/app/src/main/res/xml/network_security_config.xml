@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Plain HTTP only fetches a computer's certificate (checked against the QR code's fingerprint) and pairs
+     computers without a secure port. Everything else goes over HTTPS, trusting that computer's own
+     certificate authority alone (the app's TrustManager, not the system's). -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

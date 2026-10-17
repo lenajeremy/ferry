@@ -1,0 +1,1453 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Ferry">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#F3F1EC" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#111214" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icon.png">
+<link rel="icon" href="/icon.png">
+<title>Ferry</title>
+<style>
+:root {
+  --bg: #F3F1EC; --surface: #FFFFFF; --surface2: #E9E6DF; --ink: #16171A; --ink2: #5E6168; --ink3: #95979D;
+  --line: rgba(22, 23, 26, .09); --accent: #EE5229; --ok: #1E9A54; --wait: #D99A00; --danger: #D93A2B;
+  --lift: 0 1px 2px rgba(22, 23, 26, .05), 0 10px 30px rgba(22, 23, 26, .07);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111214; --surface: #1B1C1F; --surface2: #26272B; --ink: #F3F2EF; --ink2: #A3A6AD; --ink3: #6D7077;
+    --line: rgba(243, 242, 239, .09); --accent: #FF6B45; --ok: #3DD68C; --wait: #F2B530; --danger: #FF5F52;
+    --lift: 0 0 0 1px rgba(243, 242, 239, .06);
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; min-height: 100vh; background: var(--bg); color: var(--ink);
+  font: 15px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+}
+button { font: inherit; color: inherit; }
+[hidden] { display: none !important; }
+svg { display: block; }
+.mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+
+/* Header */
+.bar {
+  position: sticky; top: 0; z-index: 20;
+  padding: calc(env(safe-area-inset-top) + 10px) max(16px, env(safe-area-inset-right)) 10px max(16px, env(safe-area-inset-left));
+  background: color-mix(in srgb, var(--bg) 84%, transparent);
+  -webkit-backdrop-filter: saturate(1.6) blur(18px); backdrop-filter: saturate(1.6) blur(18px);
+  border-bottom: 1px solid transparent; transition: border-color .2s;
+}
+.bar.scrolled { border-color: var(--line); }
+.bar-inner { max-width: 1180px; width: 100%; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.brand { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.brand img { width: 36px; height: 36px; border-radius: 9px; flex: none; }
+.brand h1 { font-size: 20px; font-weight: 700; letter-spacing: -.015em; margin: 0; line-height: 1.1; }
+.status { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink2); margin: 2px 0 0; min-width: 0; }
+.status span:last-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ink3); flex: none; transition: background .3s; }
+.dot.on { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 20%, transparent); }
+.dot.wait { background: var(--wait); }
+.text-btn { border: 0; background: none; color: var(--accent); font-weight: 600; font-size: 16px; padding: 8px 2px; cursor: pointer; flex: none; }
+.text-btn:disabled { color: var(--ink3); cursor: default; }
+
+/* Layout */
+.layout {
+  max-width: 1180px; margin: 0 auto; display: grid; gap: 18px;
+  padding: 6px max(16px, env(safe-area-inset-right)) calc(env(safe-area-inset-bottom) + 140px) max(16px, env(safe-area-inset-left));
+}
+@media (min-width: 900px) {
+  .layout { grid-template-columns: minmax(0, 1fr) 300px; gap: 28px; align-items: start; padding-top: 18px; }
+  .aside { position: sticky; top: 86px; }
+}
+@media (max-width: 899px) { .aside { order: -1; } }
+.primary { min-width: 0; display: grid; gap: 14px; align-content: start; }
+
+/* Sending */
+.send-btn {
+  width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px; padding: 17px 20px;
+  border: 0; border-radius: 16px; background: var(--ink); color: var(--bg); font-size: 17px; font-weight: 600;
+  cursor: pointer; transition: transform .12s ease;
+}
+.send-btn:active { transform: scale(.98); }
+.send-sub { text-align: center; color: var(--ink3); font-size: 12.5px; margin: 8px 0 0; }
+.drop {
+  border: 1.5px dashed color-mix(in srgb, var(--ink) 20%, transparent); border-radius: 18px; padding: 30px 20px 26px;
+  background: var(--surface); display: grid; gap: 8px; justify-items: center; text-align: center;
+}
+.glyph { width: 48px; height: 48px; border-radius: 14px; display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); margin-bottom: 4px; }
+.drop h2 { font-size: 18px; margin: 0; font-weight: 650; letter-spacing: -.01em; }
+.drop p { margin: 0; color: var(--ink2); }
+.drop .choose { margin-top: 8px; border: 0; border-radius: 12px; padding: 11px 18px; background: var(--ink); color: var(--bg); font-weight: 600; cursor: pointer; }
+kbd { font: 600 12px ui-monospace, "SF Mono", Menlo, monospace; padding: 2px 6px; border-radius: 6px; background: var(--surface2); color: var(--ink2); }
+
+/* Cards */
+.card { background: var(--surface); border-radius: 18px; padding: 18px; box-shadow: var(--lift); }
+.card h3 { margin: 0; font-size: 16px; font-weight: 650; letter-spacing: -.01em; }
+.card p { margin: 4px 0 0; color: var(--ink2); font-size: 14px; }
+.row { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+.btn { border: 0; border-radius: 11px; padding: 10px 14px; background: var(--surface2); color: var(--ink); font-weight: 600; font-size: 14.5px; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; text-decoration: none; }
+.btn:disabled { opacity: .55; cursor: default; }
+.btn.ink { background: var(--ink); color: var(--bg); }
+.btn.quiet { background: none; color: var(--ink2); padding-left: 6px; padding-right: 6px; }
+.btn.danger { color: var(--danger); }
+.btn.confirm { background: var(--danger); color: #fff; }
+
+/* Pairing (this Mac) */
+.aside { display: grid; gap: 14px; }
+.qr { background: #fff; border-radius: 14px; padding: 10px; width: 196px; height: 196px; margin: 14px auto 2px; }
+.qr svg { width: 100%; height: 100%; }
+.pair-code { text-align: center; margin-top: 12px; }
+.pair-code b { font: 600 22px/1.2 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: .12em; }
+.pair-code small { display: block; color: var(--ink3); font-size: 12px; margin-top: 2px; }
+.link-line { display: flex; align-items: center; gap: 6px; margin-top: 12px; padding: 8px 8px 8px 12px; border-radius: 11px; background: var(--surface2); font-size: 12.5px; color: var(--ink2); }
+.link-line span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.link-line button { border: 0; background: var(--surface); border-radius: 8px; padding: 5px 9px; font-size: 12.5px; font-weight: 600; cursor: pointer; flex: none; }
+.peer { display: flex; align-items: center; gap: 10px; font-size: 14px; }
+.new-code { display: flex; justify-content: center; margin-top: 4px; }
+.new-code button { border: 0; background: none; color: var(--ink3); font-size: 12.5px; font-weight: 500; cursor: pointer; padding: 4px 8px; border-radius: 8px; }
+.new-code button:hover { color: var(--ink2); background: var(--surface2); }
+.new-code button.confirm { color: var(--danger); }
+.devices { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 2px; }
+.devices li { display: flex; align-items: center; gap: 10px; padding: 8px 0; }
+.devices .glyph { width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; background: var(--surface2); color: var(--ink2); flex: none; position: relative; }
+.devices .glyph .dot { position: absolute; right: -2px; bottom: -2px; border: 2px solid var(--surface); width: 10px; height: 10px; box-shadow: none; }
+.devices .who { flex: 1; min-width: 0; display: grid; }
+.devices .who b { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.devices .who small { font-size: 12px; color: var(--ink3); }
+.devices .remove { border: 0; background: none; color: var(--ink3); font-size: 12.5px; font-weight: 500; padding: 6px 8px; border-radius: 8px; cursor: pointer; flex: none; }
+.devices .remove:hover { color: var(--ink); background: var(--surface2); }
+.devices .remove.confirm { color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
+.devices-empty { margin: 6px 0 0; color: var(--ink2); font-size: 13.5px; }
+.devices-hint { margin: 4px 0 0; color: var(--ink3); font-size: 12.5px; }
+/* Other computers */
+.computers li { flex-wrap: wrap; border-radius: 12px; margin: 0 -8px; padding: 8px; transition: background .15s, box-shadow .15s; }
+.computers li.drop-target { background: color-mix(in srgb, var(--accent) 10%, transparent); box-shadow: inset 0 0 0 2px var(--accent); }
+.computers .acts { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 5px; margin-top: 2px; }
+.computers .acts button, .pair-row button { border: 0; border-radius: 9px; padding: 7px 10px; font: 600 12.5px/1 inherit; cursor: pointer; background: var(--surface2); color: var(--ink); }
+.computers .acts button.primary, .pair-row button.primary { background: var(--ink); color: var(--bg); }
+.computers .acts button.quiet { background: none; color: var(--ink3); font-weight: 500; margin-left: auto; }
+.computers .acts button.quiet.confirm { color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
+.computers .problem { color: var(--danger); }
+.pair-row { flex-basis: 100%; display: flex; gap: 6px; margin-top: 2px; }
+.pair-row input, .address-form input { min-width: 0; flex: 1; font: 500 14px/1 ui-monospace, "SF Mono", Menlo, monospace; padding: 8px 10px; border-radius: 9px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
+.add-address { border: 0; background: none; color: var(--ink2); font-size: 13px; font-weight: 500; padding: 8px 0 0; cursor: pointer; }
+.add-address:hover { color: var(--ink); }
+.address-form { display: grid; gap: 6px; margin-top: 8px; }
+.address-form .row2 { display: flex; gap: 6px; }
+.address-form button { border: 0; border-radius: 9px; padding: 8px 12px; font-weight: 600; font-size: 13px; cursor: pointer; background: var(--ink); color: var(--bg); }
+.form-problem { color: var(--danger); font-size: 12.5px; margin: 0; }
+.peer-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 6px; margin-top: 16px; }
+.peer-grid button { position: relative; aspect-ratio: 1; border: 0; padding: 0; border-radius: 12px; overflow: hidden; background: var(--surface); cursor: pointer; color: var(--ink); font: inherit; text-align: left; }
+.peer-grid img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.peer-grid .doc { padding: 10px; display: grid; align-content: end; height: 100%; font-size: 12.5px; font-weight: 600; word-break: break-word; }
+.peer-grid .save { position: absolute; inset: auto 6px 6px auto; background: rgba(0, 0, 0, .55); color: #fff; border-radius: 8px; padding: 4px 7px; font-size: 11.5px; font-weight: 600; opacity: 0; transition: opacity .15s; }
+.peer-grid button:hover .save, .peer-grid button:focus-visible .save, .peer-grid button.saved .save { opacity: 1; }
+.peer-grid button.saved .save { background: var(--ok); }
+.side-actions { display: grid; gap: 2px; margin-top: 10px; }
+.side-actions .btn { justify-content: flex-start; background: none; padding: 9px 4px; font-weight: 500; }
+.side-actions .btn svg { color: var(--ink2); flex: none; }
+.two-line { display: grid; min-width: 0; text-align: left; }
+.two-line small { color: var(--ink3); font-size: 12px; font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Files */
+.day h2 { font-size: 13px; font-weight: 600; color: var(--ink2); margin: 10px 2px 8px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 4px; }
+@media (min-width: 900px) { .grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 6px; } }
+.tile {
+  position: relative; display: block; width: 100%; aspect-ratio: 1; border: 0; padding: 0; border-radius: 10px; overflow: hidden;
+  background: var(--surface2); cursor: pointer; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none;
+  transition: transform .15s ease;
+}
+.tile:active { transform: scale(.97); }
+.tile:focus-visible { outline: 2.5px solid var(--accent); outline-offset: 2px; }
+.tile img { width: 100%; height: 100%; object-fit: cover; display: block; opacity: 0; transition: opacity .25s; pointer-events: none; }
+.tile.loaded img { opacity: 1; }
+.badge { position: absolute; left: 6px; bottom: 6px; display: grid; place-items: center; width: 22px; height: 22px; padding-left: 1px; border-radius: 50%; background: rgba(0, 0, 0, .5); color: #fff; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+.tile.doc { background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+.face { position: absolute; inset: 0; padding: 10px; display: flex; flex-direction: column; justify-content: space-between; text-align: left; }
+.ext { align-self: flex-start; font: 700 11px/1 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: .04em; padding: 5px 7px; border-radius: 6px; background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--accent); }
+.dname { font-size: 12.5px; line-height: 1.25; color: var(--ink); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
+.dsize { display: block; font-size: 11.5px; color: var(--ink3); margin-top: 3px; }
+.check { position: absolute; top: 6px; right: 6px; z-index: 3; width: 24px; height: 24px; border-radius: 50%; border: 2px solid #fff; background: rgba(0, 0, 0, .2); box-shadow: 0 1px 3px rgba(0, 0, 0, .3); display: none; place-items: center; color: #fff; }
+.check svg { opacity: 0; }
+.selecting .check { display: grid; }
+.tile.selected .check { background: var(--accent); }
+.tile.selected .check svg { opacity: 1; }
+.tile.selected::after { content: ""; position: absolute; inset: 0; background: rgba(255, 255, 255, .2); box-shadow: inset 0 0 0 3px var(--accent); border-radius: inherit; }
+.tile.fresh { animation: arrive .45s cubic-bezier(.2, .8, .2, 1); }
+.tile.fresh::before { content: ""; position: absolute; inset: 0; z-index: 2; border-radius: inherit; box-shadow: inset 0 0 0 3px var(--accent); animation: ring 2.6s forwards; pointer-events: none; }
+@keyframes arrive { from { transform: scale(.86); opacity: 0; } }
+@keyframes ring { 70% { opacity: 1; } to { opacity: 0; } }
+.empty { text-align: center; padding: 48px 20px 40px; color: var(--ink2); display: grid; justify-items: center; gap: 6px; }
+.empty .glyph { width: 56px; height: 56px; border-radius: 16px; background: var(--surface); box-shadow: var(--lift); color: var(--ink3); margin-bottom: 8px; }
+.empty h2 { margin: 0; font-size: 18px; color: var(--ink); font-weight: 650; }
+.empty p { margin: 0; max-width: 34ch; }
+
+/* Uploads */
+.tray {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom) + 14px); z-index: 30;
+  width: min(480px, calc(100% - 24px)); background: var(--surface); border-radius: 18px; padding: 14px 16px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .18), 0 0 0 1px var(--line); animation: rise .3s cubic-bezier(.2, .8, .2, 1);
+}
+@keyframes rise { from { transform: translate(-50%, 16px); opacity: 0; } }
+.tray-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.tray-head b { font-weight: 650; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tray-head span { color: var(--ink2); font-size: 13.5px; font-variant-numeric: tabular-nums; flex: none; }
+.track { height: 6px; border-radius: 3px; background: var(--surface2); overflow: hidden; margin-top: 10px; }
+.fill { height: 100%; width: 0; background: var(--accent); border-radius: inherit; transition: width .25s ease; }
+.fill.done { background: var(--ok); }
+.tray-list { margin: 10px -4px 0; max-height: 168px; overflow: auto; display: grid; gap: 2px; }
+.up { display: flex; align-items: center; gap: 10px; padding: 6px 4px; font-size: 13.5px; }
+.up .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.up .st { color: var(--ink3); font-variant-numeric: tabular-nums; flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.up .st.bad { color: var(--danger); }
+.up button { border: 0; background: var(--surface2); width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; cursor: pointer; color: var(--ink2); flex: none; }
+.tray-note { margin: 8px 0 0; font-size: 12.5px; color: var(--ink3); }
+
+/* Selecting */
+.selectbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 35; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 10px max(16px, env(safe-area-inset-right)) calc(env(safe-area-inset-bottom) + 10px) max(16px, env(safe-area-inset-left));
+  background: color-mix(in srgb, var(--bg) 88%, transparent); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); border-top: 1px solid var(--line);
+}
+.selectbar b { font-weight: 600; font-size: 15px; white-space: nowrap; }
+.selectbar .acts { display: flex; gap: 8px; }
+
+/* Viewer */
+.viewer { position: fixed; inset: 0; z-index: 50; background: #000; color: #fff; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; animation: fade .2s ease; }
+@keyframes fade { from { opacity: 0; } }
+.v-top { display: flex; align-items: center; gap: 12px; padding: calc(env(safe-area-inset-top) + 8px) 12px 8px; }
+.round { width: 40px; height: 40px; border-radius: 50%; border: 0; background: rgba(255, 255, 255, .13); color: #fff; display: grid; place-items: center; cursor: pointer; flex: none; }
+.round:disabled { opacity: .3; cursor: default; }
+.v-title { min-width: 0; flex: 1; text-align: center; }
+.v-title strong { display: block; font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.v-title span { font-size: 12.5px; color: rgba(255, 255, 255, .6); }
+.v-stage { position: relative; overflow: hidden; touch-action: pan-y pinch-zoom; }
+.v-stage > img, .v-stage > video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.v-stage > audio { position: absolute; left: 24px; top: 50%; transform: translateY(-50%); width: calc(100% - 48px); }
+.v-doc { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 10px; padding: 24px; text-align: center; }
+.v-doc .ext { align-self: auto; font-size: 15px; padding: 9px 12px; border-radius: 10px; }
+.v-doc b { font-size: 17px; max-width: 30ch; word-break: break-word; }
+.v-doc span:last-child { color: rgba(255, 255, 255, .6); font-size: 14px; }
+.v-nav { position: absolute; top: 50%; transform: translateY(-50%); z-index: 2; }
+.v-nav.prev { left: 14px; } .v-nav.next { right: 14px; }
+@media (hover: none) { .v-nav { display: none; } }
+.v-bottom { padding: 10px 16px calc(env(safe-area-inset-bottom) + 14px); display: grid; gap: 10px; justify-items: center; }
+.v-hint { font-size: 13px; color: rgba(255, 255, 255, .62); text-align: center; max-width: 40ch; margin: 0; }
+.v-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.pill { display: inline-flex; align-items: center; gap: 8px; padding: 12px 18px; border-radius: 999px; border: 0; background: rgba(255, 255, 255, .14); color: #fff; font-weight: 600; font-size: 15px; cursor: pointer; text-decoration: none; }
+.pill.primary { background: #fff; color: #000; }
+.pill.danger { color: #FF8A7F; }
+.pill.confirm { background: #E5484D; color: #fff; }
+.pill:disabled { opacity: .5; cursor: default; }
+
+/* Setup sheet */
+.sheet-wrap { position: fixed; inset: 0; z-index: 60; background: rgba(0, 0, 0, .38); display: grid; align-items: end; animation: fade .2s ease; }
+.sheet { width: 100%; max-width: 520px; margin: 0 auto; background: var(--bg); border-radius: 22px 22px 0 0; padding: 22px 20px calc(env(safe-area-inset-bottom) + 20px); max-height: 92vh; overflow: auto; animation: rise2 .3s cubic-bezier(.2, .8, .2, 1); }
+@media (min-width: 700px) { .sheet-wrap { align-items: center; } .sheet { border-radius: 22px; } }
+@keyframes rise2 { from { transform: translateY(30px); opacity: 0; } }
+.sheet h2 { margin: 0; font-size: 22px; letter-spacing: -.015em; text-wrap: balance; }
+.sheet > p { margin: 6px 0 0; color: var(--ink2); }
+.steps { list-style: none; margin: 18px 0 0; padding: 0; display: grid; gap: 16px; counter-reset: s; }
+.steps li { counter-increment: s; display: grid; grid-template-columns: 28px 1fr; gap: 12px; align-items: start; }
+.steps li::before { content: counter(s); width: 28px; height: 28px; border-radius: 50%; background: var(--surface); box-shadow: var(--lift); display: grid; place-items: center; font-weight: 700; font-size: 14px; }
+.steps b { font-weight: 600; }
+.steps p { margin: 2px 0 0; color: var(--ink2); font-size: 14px; }
+.steps .btn { margin-top: 10px; }
+.fine { margin: 18px 0 0; font-size: 12.5px; color: var(--ink3); }
+
+/* Drag and drop, toast */
+.dropover { position: fixed; inset: 10px; z-index: 70; border-radius: 22px; border: 2.5px dashed var(--accent); background: color-mix(in srgb, var(--bg) 82%, transparent); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); display: grid; place-content: center; justify-items: center; gap: 6px; pointer-events: none; animation: fade .15s ease; }
+.dropover b { font-size: 22px; letter-spacing: -.01em; }
+.dropover span { color: var(--ink2); }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); top: calc(env(safe-area-inset-top) + 14px); z-index: 80; background: var(--ink); color: var(--bg); padding: 11px 16px; border-radius: 14px; font-size: 14px; font-weight: 500; max-width: calc(100% - 32px); box-shadow: 0 10px 30px rgba(0, 0, 0, .2); animation: drop .25s ease; }
+@keyframes drop { from { transform: translate(-50%, -10px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<header class="bar" id="bar">
+  <div class="bar-inner">
+    <div class="brand">
+      <img src="/icon.png" alt="">
+      <div style="min-width:0">
+        <h1>Ferry</h1>
+        <p class="status"><span class="dot" id="dot"></span><span id="statusText">Connecting…</span></p>
+      </div>
+    </div>
+    <button class="text-btn" id="selectBtn" type="button" hidden>Select</button>
+  </div>
+</header>
+
+<main class="layout">
+  <section class="primary">
+    <div id="sendPhone" hidden>
+      <button class="send-btn" id="sendBtn" type="button">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+        <span>Send files</span>
+      </button>
+      <p class="send-sub" id="sendSub">Photos, videos or any file</p>
+    </div>
+    <div class="drop" id="sendMac" hidden>
+      <div class="glyph"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 17V4M4 8l4-4 4 4M16 7v13M12 16l4 4 4-4"/></svg></div>
+      <h2>Drop files here to send them</h2>
+      <p>They show up on your phone straight away. <kbd id="pasteKey">⌘V</kbd> pastes a screenshot.</p>
+      <button class="choose" id="chooseBtn" type="button">Choose files</button>
+    </div>
+
+    <div class="card" id="setupCard" hidden>
+      <h3>Save straight to Photos</h3>
+      <p>A one-time setup lets Ferry hand photos and videos to your iPhone's share sheet, so saving one, or fifty, takes a tap.</p>
+      <div class="row">
+        <button class="btn ink" id="setupOpen" type="button">Set it up</button>
+        <button class="btn quiet" id="setupLater" type="button">Not now</button>
+      </div>
+    </div>
+
+    <div id="list"></div>
+    <div class="empty" id="empty" hidden>
+      <div class="glyph"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 17V4M4 8l4-4 4 4M16 7v13M12 16l4 4 4-4"/></svg></div>
+      <h2>Nothing here yet</h2>
+      <p id="emptyText"></p>
+    </div>
+  </section>
+
+  <aside class="aside" id="aside" hidden>
+    <div class="card">
+      <h3>Open Ferry on your phone</h3>
+      <p>Point your phone's camera at this code. It needs to be on the same Wi-Fi as this computer.</p>
+      <div class="qr" id="qr" role="img" aria-label="QR code for Ferry's address"></div>
+      <div class="pair-code"><b class="mono" id="code"></b><small>or type this code on the phone</small></div>
+      <div class="new-code"><button type="button" id="newCode">New code</button></div>
+      <div class="link-line"><span id="phoneLink"></span><button type="button" id="copyLink">Copy</button></div>
+      <div class="row" style="justify-content:center;margin-top:8px">
+        <button class="btn quiet" id="qrToggle" type="button" style="font-size:13px"></button>
+      </div>
+    </div>
+    <div class="card" id="computersCard">
+      <h3>Other computers</h3>
+      <ul class="devices computers" id="computers"></ul>
+      <p class="devices-empty" id="computersEmpty" hidden>No other computer running Ferry on this Wi‑Fi yet.</p>
+      <button class="add-address" type="button" id="addAddress">Add one by its address…</button>
+      <form class="address-form" id="addressForm" hidden>
+        <input id="addrHost" placeholder="Its address, like 192.168.1.20" autocomplete="off" spellcheck="false">
+        <div class="row2"><input id="addrCode" placeholder="Its code" autocomplete="off" spellcheck="false" maxlength="12"><button type="submit">Pair</button></div>
+        <p class="form-problem" id="addrProblem" hidden></p>
+      </form>
+    </div>
+    <div class="card">
+      <h3>Paired devices</h3>
+      <ul class="devices" id="devices"></ul>
+      <p class="devices-empty" id="devicesEmpty" hidden>Nothing yet. Scan the code with your phone to pair it.</p>
+      <p class="devices-hint">Pair as many phones as you like: each one scans the code once.</p>
+      <div class="side-actions">
+        <button class="btn" id="openFolder" type="button"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round" aria-hidden="true"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2.5h6.5A2.5 2.5 0 0 1 21 10v7.5a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z"/></svg><span class="two-line"><span>Open the folder</span><small id="folderName"></small></span></button>
+        <button class="btn" id="notifyBtn" type="button" hidden><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15zM10 20.5a2.2 2.2 0 0 0 4 0"/></svg><span>Notify me when files arrive</span></button>
+      </div>
+    </div>
+  </aside>
+</main>
+
+<input type="file" id="picker" multiple hidden>
+
+<div class="tray" id="tray" hidden aria-live="polite">
+  <div class="tray-head"><b id="trayTitle"></b><span id="trayCount"></span></div>
+  <div class="track"><div class="fill" id="trayFill"></div></div>
+  <div class="tray-list" id="trayList"></div>
+  <p class="tray-note" id="trayNote" hidden>Keep this page open until it's done.</p>
+</div>
+
+<div class="selectbar" id="selectBar" hidden>
+  <b id="selCount">Select files</b>
+  <div class="acts" id="selActs"></div>
+</div>
+
+<div class="viewer" id="viewer" hidden role="dialog" aria-modal="true" aria-labelledby="vName">
+  <div class="v-top">
+    <button class="round" id="vClose" type="button" aria-label="Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    <div class="v-title"><strong id="vName"></strong><span id="vMeta"></span></div>
+    <span style="width:40px;flex:none"></span>
+  </div>
+  <div class="v-stage" id="vStage">
+    <button class="round v-nav prev" id="vPrev" type="button" aria-label="Previous"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
+    <button class="round v-nav next" id="vNext" type="button" aria-label="Next"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></button>
+  </div>
+  <div class="v-bottom">
+    <p class="v-hint" id="vHint" hidden></p>
+    <div class="v-actions" id="vActions"></div>
+  </div>
+</div>
+
+<div class="sheet-wrap" id="sheet" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+    <h2 id="sheetTitle">Save straight to Photos</h2>
+    <p>Safari only lets a page pass files to the share sheet over a secure connection. Trusting Ferry's certificate once gives it one, on your home network.</p>
+    <ol class="steps">
+      <li><div><b>Download Ferry's certificate</b><p>Safari asks to download a configuration profile. Tap Allow, then Close.</p><a class="btn ink" href="/ferry.cer">Download certificate</a></div></li>
+      <li><div><b>Install it</b><p>Open Settings, tap <b>Profile Downloaded</b> near the top, then <b>Install</b>.</p></div></li>
+      <li><div><b>Trust it</b><p>Settings › General › About › <b>Certificate Trust Settings</b>, then turn on <b id="caName">Ferry</b>.</p></div></li>
+      <li><div><b>Open the secure page</b><p>Use it from now on. To keep it a tap away, use Share › Add to Home Screen there.</p><a class="btn ink" id="secureLink" href="#">Open the secure page</a></div></li>
+    </ol>
+    <p class="fine">The certificate only covers names ending in .local and home network addresses, so it can't vouch for any website. Remove it any time in Settings › General › VPN &amp; Device Management.</p>
+    <div class="row"><button class="btn" id="sheetClose" type="button" style="width:100%;justify-content:center">Done</button></div>
+  </div>
+</div>
+
+<div class="dropover" id="dropover" hidden><b>Drop to send</b><span id="dropSub"></span></div>
+<div class="toast" id="toast" hidden role="status"></div>
+
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const enc = encodeURIComponent;
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const ua = navigator.userAgent;
+const isIPad = /iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+const isIOS = /iPhone|iPod/.test(ua) || isIPad;
+const isSafari = /Safari/.test(ua) && !/Chrome|Chromium|Edg|Firefox/.test(ua);
+const deviceName = /iPhone/.test(ua) ? 'iPhone' : isIPad ? 'iPad' : /Android/.test(ua) ? 'Android' : /Macintosh/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'PC' : 'Device';
+// Copying an image needs the clipboard API, which browsers only give secure pages (this computer's
+// own page, or the phone's secure page).
+const canCopyImages = !!(navigator.clipboard?.write && window.ClipboardItem && window.isSecureContext);
+// Ferry's desktop app opens the page with ?app; its window can't show web notifications.
+const inApp = new URLSearchParams(location.search).has('app');
+const canShareFiles = (() => {
+  try { return window.isSecureContext && !!navigator.canShare && navigator.canShare({ files: [new File(['x'], 'x.txt', { type: 'text/plain' })] }); }
+  catch { return false; }
+})();
+const prefs = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+};
+const SHARE_LIMIT = 500e6; // bigger than this is a download: the share sheet holds it all in memory
+
+const icon = {
+  play: '<svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12.6-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5z"/></svg>',
+  check: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  x: '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+  retry: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg>',
+  share: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3M7.5 7.5L12 3l4.5 4.5M8 11H6.5A1.5 1.5 0 0 0 5 12.5v7A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5v-7a1.5 1.5 0 0 0-1.5-1.5H16"/></svg>',
+  down: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v12M7 11.5l5 5 5-5M5 20h14"/></svg>',
+  trash: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12.5A1.5 1.5 0 0 0 8.5 21h7a1.5 1.5 0 0 0 1.5-1.5L18 7M9 7V4.5A1.5 1.5 0 0 1 10.5 3h3A1.5 1.5 0 0 1 15 4.5V7"/></svg>',
+  finder: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2.5h6.5A2.5 2.5 0 0 1 21 10v7.5a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z"/></svg>',
+  copy: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V5.5A1.5 1.5 0 0 0 14.5 4h-9A1.5 1.5 0 0 0 4 5.5v9A1.5 1.5 0 0 0 5.5 16H8"/></svg>',
+  open: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v4.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H10"/></svg>',
+};
+
+const state = { info: null, files: [], peers: [], connected: false, selecting: false, selected: new Set(), loaded: false };
+const fresh = new Set();
+let unseen = 0;
+
+// MARK: Formatting
+
+const fmtSize = n => n >= 1e9 ? (n / 1e9).toFixed(1) + ' GB' : n >= 1e6 ? (n / 1e6).toFixed(1) + ' MB' : n >= 1e3 ? Math.round(n / 1e3) + ' KB' : n + ' bytes';
+const dayStart = d => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+function dayLabel(ms) {
+  const d = new Date(ms), now = new Date();
+  const days = Math.round((dayStart(now) - dayStart(d)) / 864e5);
+  if (days <= 0) return 'Today';
+  if (days === 1) return 'Yesterday';
+  const opts = { weekday: 'long', day: 'numeric', month: 'long' };
+  if (d.getFullYear() !== now.getFullYear()) opts.year = 'numeric';
+  return d.toLocaleDateString(undefined, opts);
+}
+const timeLabel = ms => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+const extOf = name => { const i = name.lastIndexOf('.'); return i > 0 ? name.slice(i + 1).toUpperCase().slice(0, 4) : 'FILE'; };
+function kindOfName(name) {
+  const ext = name.split('.').pop().toLowerCase();
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif', 'avif', 'tif', 'tiff', 'dng', 'bmp'].includes(ext)) return 'image';
+  if (['mp4', 'mov', 'm4v', 'webm', '3gp'].includes(ext)) return 'video';
+  return 'file';
+}
+// "1 photo", "3 videos", "2 files" (mixed kinds are files).
+function describe(kinds) {
+  const one = { image: 'photo', video: 'video' }[kinds[0]] || 'file';
+  const word = new Set(kinds).size === 1 ? one : 'file';
+  return `${kinds.length} ${word}${kinds.length === 1 ? '' : 's'}`;
+}
+const describeFiles = files => describe(files.map(f => f.kind));
+
+// MARK: Live connection
+
+let es;
+function connect() {
+  if (es) es.close();
+  es = new EventSource('/api/events?device=' + enc(deviceName));
+  es.addEventListener('hello', e => {
+    const d = JSON.parse(e.data);
+    state.info = d.info;
+    state.connected = true;
+    setFiles(d.files);
+    renderChrome();
+  });
+  es.addEventListener('files', e => setFiles(JSON.parse(e.data)));
+  es.addEventListener('peers', e => { state.peers = JSON.parse(e.data); renderStatus(); if (state.info?.local) loadDevices(); });
+  es.addEventListener('devices', () => loadDevices());
+  es.addEventListener('computers', () => loadComputers());
+  es.addEventListener('code', async () => {
+    try { state.info = await (await fetch('/api/info', { cache: 'no-store' })).json(); renderChrome(); } catch {}
+  });
+  es.onopen = () => { state.connected = true; renderStatus(); };
+  es.onerror = async () => {
+    state.connected = false;
+    renderStatus();
+    // Unpaired (the code changed): reloading shows the page that asks for the new one.
+    try { const r = await fetch('/api/files', { cache: 'no-store' }); if (r.status === 401) location.reload(); } catch {}
+    if (es.readyState === EventSource.CLOSED) setTimeout(connect, 2500);
+  };
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) return;
+  if (!es || es.readyState === EventSource.CLOSED) connect();
+  unseen = 0;
+  document.title = 'Ferry';
+});
+
+function setFiles(files) {
+  const before = new Set(state.files.map(f => f.name));
+  const arrived = state.loaded ? files.filter(f => !before.has(f.name)) : [];
+  state.files = files;
+  state.loaded = true;
+  for (const name of [...state.selected]) if (!files.some(f => f.name === name)) state.selected.delete(name);
+  for (const f of arrived) { fresh.add(f.name); setTimeout(() => fresh.delete(f.name), 3000); }
+  const fromElsewhere = arrived.filter(f => f.from !== deviceName && !sentHere.has(f.name));
+  if (fromElsewhere.length) announce(fromElsewhere);
+  renderList();
+  if (viewer.open) viewer.sync();
+  renderSelectBar();
+}
+
+// New files from another device: a toast, or (on the Mac, in the background) a notification.
+function announce(files) {
+  const text = `${describeFiles(files)} from ${files[0].from}`;
+  if (!document.hidden) return toast(text);
+  unseen += files.length;
+  document.title = `(${unseen}) Ferry`;
+  if (state.info?.local && 'Notification' in window && Notification.permission === 'granted') {
+    try { new Notification('Ferry', { body: text, icon: '/icon.png', tag: 'ferry' }); } catch {}
+  }
+}
+
+// MARK: Chrome
+
+function renderChrome() {
+  const info = state.info;
+  if (!info) return;
+  $('#sendPhone').hidden = info.local;
+  $('#sendMac').hidden = !info.local;
+  $('#aside').hidden = !info.local;
+  $('#sendSub').textContent = `To ${info.host}`;
+  $('#emptyText').textContent = info.local
+    ? `Drop files above, or send them from your phone. Everything lands in ${info.folder}.`
+    : `Send something from this ${deviceName}, or drop files on Ferry's page on your computer.`;
+  if (info.local) {
+    $('#code').textContent = info.code;
+    $('#folderName').textContent = info.folder;
+    $('#folderName').title = info.folder;
+    $('#pasteKey').textContent = info.os === 'darwin' ? '⌘V' : 'Ctrl+V';
+    showQR(qrByIP);
+    loadDevices();
+    loadComputers();
+    $('#notifyBtn').hidden = inApp || !('Notification' in window) || Notification.permission !== 'default';
+  }
+  $('#setupCard').hidden = !(isIOS && !info.secure && info.secureURL && prefs.get('ferry.setupLater') !== '1');
+  if (info.secureURL) $('#secureLink').href = info.secureURL;
+  $('#caName').textContent = `Ferry on ${info.host}`;
+  renderStatus();
+  renderList();
+}
+
+let qrByIP = false;
+async function showQR(byIP) {
+  qrByIP = byIP;
+  const info = state.info;
+  const link = byIP ? info.phoneIPURL : info.phoneURL;
+  $('#phoneLink').textContent = link.replace(/\/\?k=.*$/, '');
+  $('#qrToggle').textContent = byIP ? 'Use the computer’s name instead' : 'Not opening? Use its address instead';
+  $('#qrToggle').hidden = !info.phoneIPURL || info.phoneIPURL === info.phoneURL;
+  try {
+    const r = await fetch('/qr.svg' + (byIP ? '?ip=1' : ''), { cache: 'no-store' });
+    if (r.ok) $('#qr').innerHTML = await r.text(); // drawn by Ferry itself
+  } catch {}
+}
+$('#qrToggle').onclick = () => showQR(!qrByIP);
+$('#copyLink').onclick = async () => {
+  const info = state.info;
+  try { await navigator.clipboard.writeText(qrByIP ? info.phoneIPURL : info.phoneURL); toast('Link copied, code included'); }
+  catch { toast('Couldn’t copy the link'); }
+};
+$('#openFolder').onclick = () => post('/api/open-folder').catch(() => toast('Couldn’t open the folder'));
+$('#notifyBtn').onclick = async () => {
+  const p = await Notification.requestPermission();
+  $('#notifyBtn').hidden = true;
+  if (p === 'granted') toast('You’ll get a notification when files arrive');
+};
+
+// MARK: Other computers (this computer's page only)
+
+let computers = [], pairingWith = null, forgetArmed = null, forgetTimer;
+const computerGlyph = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M2 20h20"/></svg>';
+
+async function loadComputers() {
+  try {
+    const r = await fetch('/api/computers', { cache: 'no-store' });
+    if (r.ok) { computers = await r.json(); renderComputers(); }
+  } catch {}
+}
+
+function renderComputers() {
+  $('#computersEmpty').hidden = computers.length > 0;
+  $('#computers').innerHTML = computers.map(c => {
+    const status = c.problem === 'removed' ? '<span class="problem">It removed this computer · pair again</span>'
+      : c.paired ? (c.nearby ? 'Paired · drop files here to send' : 'Paired · not on the network right now') : 'On this Wi‑Fi · not paired';
+    let below = '';
+    if (pairingWith === c.id) {
+      below = `<form class="pair-row" data-pair="${esc(c.id)}"><input name="code" placeholder="Its code" autocomplete="off" spellcheck="false" maxlength="12" autofocus><button class="primary" type="submit">Pair</button></form>`;
+    } else if (c.paired && c.problem !== 'removed') {
+      const sure = forgetArmed === c.id;
+      below = `<span class="acts"><button class="primary" type="button" data-act="send">Send files</button><button type="button" data-act="browse">Their files</button>
+        <button class="quiet${sure ? ' confirm' : ''}" type="button" data-act="forget">${sure ? 'Forget?' : 'Forget'}</button></span>`;
+    } else {
+      below = `<span class="acts"><button class="primary" type="button" data-act="pair">Pair</button>${c.paired ? '<button class="quiet" type="button" data-act="forget">Forget</button>' : ''}</span>`;
+    }
+    return `<li data-computer="${esc(c.id)}"${c.paired ? ' data-paired' : ''}><span class="glyph">${computerGlyph}<span class="dot${c.paired && c.nearby ? ' on' : ''}"></span></span>
+      <span class="who"><b>${esc(c.name)}</b><small>${status}</small></span>${below}</li>`;
+  }).join('');
+  $('#computers [data-pair] input')?.focus();
+}
+
+$('#computers').addEventListener('click', async e => {
+  const b = e.target.closest('button[data-act]');
+  if (!b) return;
+  const c = computers.find(x => x.id === b.closest('[data-computer]').dataset.computer);
+  if (!c) return;
+  const act = b.dataset.act;
+  if (act === 'send') { pickFor = { id: c.id, name: c.name }; picker.click(); }
+  if (act === 'browse') browseComputer(c);
+  if (act === 'pair') { pairingWith = c.id; renderComputers(); }
+  if (act === 'forget') {
+    clearTimeout(forgetTimer);
+    if (forgetArmed !== c.id) {
+      forgetArmed = c.id;
+      renderComputers();
+      forgetTimer = setTimeout(() => { forgetArmed = null; renderComputers(); }, 4000);
+      return;
+    }
+    forgetArmed = null;
+    try {
+      const r = await fetch('/api/computers/' + enc(c.id), { method: 'DELETE', headers: { 'X-Ferry': '1' } });
+      if (!r.ok) throw new Error();
+      toast(`Forgot ${c.name}. It can’t send here any more.`);
+    } catch { toast('Couldn’t forget it'); }
+    loadComputers();
+  }
+});
+
+async function pairComputer(body, onProblem) {
+  try {
+    const r = await fetch('/api/computers/pair', { method: 'POST', headers: { 'X-Ferry': '1', 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { onProblem(d.error || 'Couldn’t pair'); return false; }
+    toast(`Paired with ${d.name}. Drop files on it to send them.`);
+    pairingWith = null;
+    loadComputers();
+    return true;
+  } catch { onProblem('Couldn’t pair'); return false; }
+}
+
+$('#computers').addEventListener('submit', async e => {
+  e.preventDefault();
+  const form = e.target.closest('[data-pair]');
+  const code = form.querySelector('input').value;
+  form.querySelector('button').disabled = true;
+  await pairComputer({ id: form.dataset.pair, code }, message => { toast(message); form.querySelector('button').disabled = false; });
+});
+$('#addAddress').onclick = () => {
+  $('#addressForm').hidden = !$('#addressForm').hidden;
+  if (!$('#addressForm').hidden) $('#addrHost').focus();
+};
+$('#addressForm').onsubmit = async e => {
+  e.preventDefault();
+  $('#addrProblem').hidden = true;
+  const ok = await pairComputer({ address: $('#addrHost').value, code: $('#addrCode').value }, message => {
+    $('#addrProblem').textContent = message;
+    $('#addrProblem').hidden = false;
+  });
+  if (ok) { $('#addressForm').reset(); $('#addressForm').hidden = true; }
+};
+
+// Their files: a sheet of the other computer's Ferry folder; a tap saves one here.
+async function browseComputer(c) {
+  const wrap = document.createElement('div');
+  wrap.className = 'sheet-wrap';
+  wrap.innerHTML = `<div class="sheet" role="dialog" aria-label="${esc(c.name)}’s files" style="max-width: 760px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px"><h2>${esc(c.name)}</h2><button class="btn quiet" type="button" data-close>Done</button></div>
+    <p>Its Ferry folder. Click a file to save a copy on this computer.</p><div class="peer-grid" id="peerGrid"><p class="devices-empty">Loading…</p></div></div>`;
+  document.body.append(wrap);
+  const close = () => wrap.remove();
+  wrap.addEventListener('click', e => { if (e.target === wrap || e.target.closest('[data-close]')) close(); });
+  addEventListener('keydown', function esc_(e) { if (e.key === 'Escape') { close(); removeEventListener('keydown', esc_); } });
+  let files = [];
+  try {
+    const r = await fetch(`/api/computers/${enc(c.id)}/files`, { cache: 'no-store' });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error);
+    files = d;
+  } catch (err) {
+    wrap.querySelector('#peerGrid').innerHTML = `<p class="devices-empty">${esc(err.message || 'Couldn’t reach it')}</p>`;
+    return;
+  }
+  const grid = wrap.querySelector('#peerGrid');
+  grid.innerHTML = files.length ? files.map(f => {
+    const face = f.kind === 'image' || f.kind === 'video'
+      ? `<img src="/api/computers/${enc(c.id)}/thumb/${enc(f.name)}?v=${enc(f.v)}" alt="" loading="lazy">`
+      : `<span class="doc">${esc(f.name)}</span>`;
+    return `<button type="button" data-name="${esc(f.name)}" title="${esc(f.name)}">${face}<span class="save">Save here</span></button>`;
+  }).join('') : '<p class="devices-empty">Nothing in its Ferry folder yet.</p>';
+  grid.addEventListener('click', async e => {
+    const b = e.target.closest('button[data-name]');
+    if (!b || b.classList.contains('saved')) return;
+    b.querySelector('.save').textContent = 'Saving…';
+    try {
+      const r = await fetch(`/api/computers/${enc(c.id)}/fetch/${enc(b.dataset.name)}`, { method: 'POST', headers: { 'X-Ferry': '1' } });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      b.classList.add('saved');
+      b.querySelector('.save').textContent = 'Saved';
+    } catch (err) {
+      b.querySelector('.save').textContent = 'Save here';
+      toast(err.message || 'Couldn’t save it');
+    }
+  });
+}
+
+// MARK: Paired devices (this computer's page only)
+
+const deviceGlyph = {
+  phone: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6.5" y="2.5" width="11" height="19" rx="3"/><path d="M11 18.5h2"/></svg>',
+  tablet: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="2.5" width="16" height="19" rx="2.5"/><path d="M11 18.5h2"/></svg>',
+  computer: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M2 20h20"/></svg>',
+};
+let devices = [], armed = null, armTimer;
+
+async function loadDevices() {
+  try {
+    const r = await fetch('/api/devices', { cache: 'no-store' });
+    if (r.ok) { devices = await r.json(); renderDevices(); }
+  } catch {}
+}
+
+function seen(d) {
+  if (d.online) return 'Connected now';
+  const mins = (Date.now() - Date.parse(d.lastSeen)) / 60000;
+  if (mins < 2) return 'Seen just now';
+  if (mins < 60) return `Seen ${Math.round(mins)} min ago`;
+  if (mins < 60 * 24) return `Seen ${Math.round(mins / 60)} h ago`;
+  if (mins < 60 * 48) return 'Seen yesterday';
+  return 'Seen ' + new Date(d.lastSeen).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+}
+
+function renderDevices() {
+  $('#devicesEmpty').hidden = devices.length > 0;
+  $('#devices').innerHTML = devices.map(d => {
+    const glyph = /iPhone|Android/.test(d.kind) ? deviceGlyph.phone : d.kind === 'iPad' ? deviceGlyph.tablet : deviceGlyph.computer;
+    const sure = armed === d.id;
+    return `<li><span class="glyph">${glyph}<span class="dot${d.online ? ' on' : ''}"></span></span>
+      <span class="who"><b>${esc(d.name)}</b><small>${d.computer ? 'Computer' : d.app ? 'Ferry app' : 'Browser'} · ${seen(d)}</small></span>
+      <button class="remove${sure ? ' confirm' : ''}" type="button" data-id="${esc(d.id)}">${sure ? 'Remove?' : 'Remove'}</button></li>`;
+  }).join('');
+}
+
+$('#devices').addEventListener('click', async e => {
+  const b = e.target.closest('.remove');
+  if (!b) return;
+  const id = b.dataset.id, d = devices.find(x => x.id === id);
+  clearTimeout(armTimer);
+  if (armed !== id) {
+    armed = id;
+    renderDevices();
+    armTimer = setTimeout(() => { armed = null; renderDevices(); }, 4000);
+    return;
+  }
+  armed = null;
+  try {
+    const r = await fetch('/api/devices/' + enc(id), { method: 'DELETE', headers: { 'X-Ferry': '1' } });
+    if (!r.ok) throw new Error();
+    toast(`Removed ${d?.name ?? 'the device'}. If someone else saw the code, make a new one too.`);
+  } catch { toast('Couldn’t remove it'); }
+  loadDevices();
+});
+
+let codeArmed = false, codeTimer;
+$('#newCode').onclick = async () => {
+  clearTimeout(codeTimer);
+  if (!codeArmed) {
+    codeArmed = true;
+    $('#newCode').textContent = 'Make a new code? Paired devices stay connected';
+    $('#newCode').classList.add('confirm');
+    codeTimer = setTimeout(resetCodeButton, 5000);
+    return;
+  }
+  resetCodeButton();
+  try {
+    const r = await fetch('/api/code', { method: 'POST', headers: { 'X-Ferry': '1' } });
+    if (!r.ok) throw new Error();
+    toast('New code made. The old one no longer pairs anything.');
+  } catch { toast('Couldn’t make a new code'); }
+};
+function resetCodeButton() {
+  codeArmed = false;
+  $('#newCode').textContent = 'New code';
+  $('#newCode').classList.remove('confirm');
+}
+setInterval(() => { if (devices.length && !armed) renderDevices(); }, 60000);
+
+function renderStatus() {
+  const info = state.info;
+  const dot = $('#dot'), text = $('#statusText');
+  if (!state.connected) {
+    dot.className = 'dot wait';
+    text.textContent = info ? 'Reconnecting…' : 'Connecting…';
+    return;
+  }
+  if (info?.local) {
+    const others = [...new Set(state.peers.filter(p => !p.local).map(p => p.device))];
+    const label = others.length ? `${others.join(' and ')} connected` : '';
+    dot.className = 'dot' + (others.length ? ' on' : '');
+    text.textContent = label || 'Waiting for your phone';
+  } else {
+    dot.className = 'dot on';
+    text.textContent = `Connected to ${info?.host ?? 'your computer'}`;
+  }
+}
+
+const bar = $('#bar');
+addEventListener('scroll', () => bar.classList.toggle('scrolled', scrollY > 4), { passive: true });
+
+let toastTimer;
+function toast(message) {
+  const t = $('#toast');
+  t.textContent = message;
+  t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.hidden = true; }, 2600);
+}
+
+async function post(url) {
+  const r = await fetch(url, { method: 'POST', headers: { 'X-Ferry': '1' } });
+  if (!r.ok) throw new Error(await r.text());
+}
+
+// MARK: The files
+
+const tiles = new Map(); // name|version → tile, so a redraw keeps loaded thumbnails
+function tileFor(f) {
+  const key = f.name + '|' + f.v;
+  let el = tiles.get(key);
+  if (el) return el;
+  el = document.createElement('button');
+  el.type = 'button';
+  el.className = 'tile';
+  el.dataset.name = f.name;
+  el.setAttribute('aria-label', `${f.name}, ${describe([f.kind]).slice(2)}, from ${f.from}`);
+  const face = () => {
+    el.classList.add('doc');
+    const div = document.createElement('div');
+    div.className = 'face';
+    div.innerHTML = `<span class="ext">${esc(extOf(f.name))}</span><span><span class="dname">${esc(f.name)}</span><span class="dsize">${fmtSize(f.size)}</span></span>`;
+    el.prepend(div);
+  };
+  if (f.kind === 'image' || f.kind === 'video' || f.kind === 'pdf') {
+    const img = new Image();
+    img.alt = '';
+    img.decoding = 'async';
+    img.loading = 'lazy';
+    img.onload = () => el.classList.add('loaded');
+    img.onerror = () => { img.remove(); face(); };
+    img.src = `/thumb/${enc(f.name)}?v=${enc(f.v)}`;
+    el.append(img);
+    if (f.kind === 'video') el.insertAdjacentHTML('beforeend', `<span class="badge">${icon.play}</span>`);
+  } else {
+    face();
+  }
+  el.insertAdjacentHTML('beforeend', `<span class="check" aria-hidden="true">${icon.check}</span>`);
+  tiles.set(key, el);
+  return el;
+}
+
+function renderList() {
+  const groups = new Map();
+  for (const f of state.files) {
+    const label = dayLabel(f.added);
+    if (!groups.has(label)) groups.set(label, []);
+    groups.get(label).push(f);
+  }
+  const frag = document.createDocumentFragment();
+  for (const [label, items] of groups) {
+    const section = document.createElement('section');
+    section.className = 'day';
+    const h = document.createElement('h2');
+    h.textContent = label;
+    const grid = document.createElement('div');
+    grid.className = 'grid';
+    for (const f of items) {
+      const t = tileFor(f);
+      t.classList.toggle('selected', state.selected.has(f.name));
+      t.classList.toggle('fresh', fresh.has(f.name));
+      if (state.selecting) t.setAttribute('aria-pressed', String(state.selected.has(f.name)));
+      else t.removeAttribute('aria-pressed');
+      grid.append(t);
+    }
+    section.append(h, grid);
+    frag.append(section);
+  }
+  $('#list').replaceChildren(frag);
+  $('#list').classList.toggle('selecting', state.selecting);
+  const live = new Set(state.files.map(f => f.name + '|' + f.v));
+  for (const k of tiles.keys()) if (!live.has(k)) tiles.delete(k);
+  $('#empty').hidden = !state.loaded || !state.info || state.files.length > 0;
+  $('#selectBtn').hidden = !state.info || (state.files.length === 0 && !state.selecting);
+}
+
+$('#list').addEventListener('click', e => {
+  const tile = e.target.closest('.tile');
+  if (!tile) return;
+  const name = tile.dataset.name;
+  if (state.selecting) {
+    state.selected.has(name) ? state.selected.delete(name) : state.selected.add(name);
+    deleteArmed = null;
+    renderList();
+    renderSelectBar();
+  } else {
+    viewer.show(name);
+  }
+});
+
+// MARK: Sending
+
+const picker = $('#picker');
+$('#sendBtn').onclick = () => picker.click();
+$('#chooseBtn').onclick = () => picker.click();
+let pickFor = null; // the computer "Send files" was clicked for
+picker.onchange = () => { enqueue([...picker.files], pickFor); pickFor = null; picker.value = ''; };
+
+const uploads = [];
+const sentHere = new Set(); // names this page sent, so they don't announce themselves
+let active = 0, upSeq = 0, trayTimer, wakeLock = null;
+
+// to: another computer ({ id, name }) to send to instead of this one's folder.
+function enqueue(files, to = null) {
+  files = files.filter(Boolean);
+  if (!files.length) return;
+  clearTimeout(trayTimer);
+  if (!uploads.some(u => u.state === 'sending' || u.state === 'waiting')) uploads.length = 0;
+  for (const file of files) uploads.push({ id: ++upSeq, file, name: file.name || 'image.png', loaded: 0, state: 'waiting', to });
+  renderTray();
+  pump();
+}
+
+function pump() {
+  while (active < 2) {
+    const u = uploads.find(u => u.state === 'waiting');
+    if (!u) break;
+    start(u);
+  }
+}
+
+function start(u) {
+  active++;
+  u.state = 'sending';
+  u.loaded = 0;
+  const xhr = new XMLHttpRequest();
+  u.xhr = xhr;
+  xhr.open('PUT', u.to ? `/api/computers/${enc(u.to.id)}/upload?name=${enc(u.name)}`
+                       : `/api/upload?name=${enc(u.name)}&device=${enc(deviceName)}`);
+  xhr.setRequestHeader('X-Ferry', '1');
+  xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+  xhr.upload.onprogress = e => { u.loaded = e.loaded; renderTray(); };
+  const finish = (st, error) => {
+    active--;
+    u.state = st;
+    u.error = error;
+    u.xhr = null;
+    renderTray();
+    pump();
+  };
+  xhr.onload = () => {
+    if (xhr.status >= 200 && xhr.status < 300) {
+      try { sentHere.add(JSON.parse(xhr.responseText).name); } catch {}
+      u.loaded = u.file.size;
+      finish('done');
+    } else if (xhr.status === 401) {
+      location.reload();
+    } else {
+      let message = (xhr.responseText || '').trim();
+      try { message = JSON.parse(message).error || message; } catch {}
+      finish('failed', message || `Failed (${xhr.status})`);
+    }
+  };
+  xhr.onerror = () => finish('failed', 'Lost the connection');
+  xhr.onabort = () => finish('cancelled');
+  xhr.send(u.file);
+}
+
+function renderTray() {
+  const tray = $('#tray');
+  const shown = uploads.filter(u => u.state !== 'cancelled');
+  const busy = shown.some(u => u.state === 'sending' || u.state === 'waiting');
+  keepAwake(busy);
+  if (!shown.length) { tray.hidden = true; return; }
+  tray.hidden = false;
+  const total = shown.reduce((s, u) => s + u.file.size, 0);
+  const loaded = shown.reduce((s, u) => s + (u.state === 'done' ? u.file.size : u.loaded), 0);
+  const done = shown.filter(u => u.state === 'done').length;
+  const failed = shown.filter(u => u.state === 'failed').length;
+  const pct = total ? Math.min(100, Math.round(loaded / total * 100)) : 100;
+  const what = describe(shown.map(u => kindOfName(u.name)));
+  const to = shown.find(u => u.to)?.to;
+  const where = to ? ` to ${to.name}` : '';
+  $('#trayTitle').textContent = busy ? `Sending ${what}${where}` : failed ? `${failed} didn’t send` : `Sent ${what}${where}`;
+  $('#trayCount').textContent = busy ? (shown.length > 1 ? `${done} of ${shown.length} · ${pct}%` : `${pct}%`) : fmtSize(total);
+  const fill = $('#trayFill');
+  fill.style.width = pct + '%';
+  fill.classList.toggle('done', !busy && !failed);
+  $('#trayNote').hidden = !busy || !isIOS;
+  $('#trayList').innerHTML = shown.map(u => {
+    const st = u.state === 'sending' ? `${Math.round(u.loaded / Math.max(u.file.size, 1) * 100)}%`
+      : u.state === 'waiting' ? 'Waiting' : u.state === 'done' ? fmtSize(u.file.size) : esc(u.error || 'Failed');
+    const action = u.state === 'failed' ? `<button type="button" data-retry="${u.id}" aria-label="Try again">${icon.retry}</button>`
+      : u.state !== 'done' ? `<button type="button" data-cancel="${u.id}" aria-label="Cancel">${icon.x}</button>` : '';
+    return `<div class="up"><span class="nm">${esc(u.name)}</span><span class="st${u.state === 'failed' ? ' bad' : ''}" title="${esc(u.error || '')}">${st}</span>${action}</div>`;
+  }).join('');
+  $('#trayList').hidden = shown.length < 2 && !failed;
+  if (!busy) {
+    clearTimeout(trayTimer);
+    trayTimer = setTimeout(() => {
+      if (failed) return; // stays until it's retried or dismissed
+      uploads.length = 0;
+      renderTray();
+    }, 2400);
+  }
+}
+
+// The screen staying on keeps a long upload from stopping (only on the secure page).
+async function keepAwake(on) {
+  if (!('wakeLock' in navigator)) return;
+  try {
+    if (on && !wakeLock) { wakeLock = 'pending'; wakeLock = await navigator.wakeLock.request('screen'); }
+    else if (!on && wakeLock && wakeLock !== 'pending') { await wakeLock.release(); wakeLock = null; }
+  } catch { wakeLock = null; }
+}
+
+$('#trayList').addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  const u = uploads.find(u => u.id === Number(b.dataset.retry || b.dataset.cancel));
+  if (!u) return;
+  if (b.dataset.retry) { u.state = 'waiting'; u.error = null; renderTray(); pump(); }
+  else if (u.xhr) u.xhr.abort();
+  else { u.state = 'cancelled'; renderTray(); }
+});
+$('#tray').addEventListener('click', e => {
+  // A finished tray with failures is put away by tapping its title.
+  if (e.target.closest('.tray-head') && !uploads.some(u => u.state === 'sending' || u.state === 'waiting')) { uploads.length = 0; renderTray(); }
+});
+
+// Dropping files anywhere on the page, and pasting (a screenshot).
+let dragDepth = 0;
+const hasFiles = e => [...(e.dataTransfer?.types || [])].includes('Files');
+addEventListener('dragenter', e => {
+  if (!hasFiles(e)) return;
+  e.preventDefault();
+  dragDepth++;
+  $('#dropSub').textContent = state.info?.local ? 'They’ll show up on your phone' : `They’ll go to ${state.info?.host ?? 'your computer'}`;
+  $('#dropover').hidden = false;
+});
+let dropComputer = null;
+addEventListener('dragover', e => {
+  if (!hasFiles(e)) return;
+  e.preventDefault();
+  // Over a paired computer, the files go there instead.
+  const row = e.target.closest?.('[data-computer][data-paired]');
+  if (row !== dropComputer) {
+    dropComputer?.classList.remove('drop-target');
+    dropComputer = row;
+    row?.classList.add('drop-target');
+    $('#dropover').hidden = !!row;
+  }
+});
+addEventListener('dragleave', e => {
+  if (hasFiles(e) && --dragDepth <= 0) {
+    dragDepth = 0;
+    $('#dropover').hidden = true;
+    dropComputer?.classList.remove('drop-target');
+    dropComputer = null;
+  }
+});
+addEventListener('drop', e => {
+  if (!hasFiles(e)) return;
+  e.preventDefault();
+  dragDepth = 0;
+  $('#dropover').hidden = true;
+  const items = [...(e.dataTransfer.items || [])].filter(i => i.kind === 'file');
+  const isFolder = i => i.webkitGetAsEntry?.()?.isDirectory;
+  const folders = items.filter(isFolder).length;
+  const files = items.length ? items.filter(i => !isFolder(i)).map(i => i.getAsFile()) : [...e.dataTransfer.files];
+  if (folders) toast('Folders can’t be sent. Compress them first (right-click › Compress).');
+  const row = dropComputer;
+  dropComputer?.classList.remove('drop-target');
+  dropComputer = null;
+  const c = row && computers.find(c => c.id === row.dataset.computer);
+  enqueue(files, c ? { id: c.id, name: c.name } : null);
+});
+addEventListener('paste', e => {
+  if (e.target.closest?.('input, textarea')) return;
+  const files = [...(e.clipboardData?.files || [])];
+  if (files.length) { e.preventDefault(); enqueue(files); }
+});
+
+// MARK: Selecting
+
+$('#selectBtn').onclick = () => setSelecting(!state.selecting);
+function setSelecting(on) {
+  state.selecting = on;
+  state.selected.clear();
+  deleteArmed = null;
+  $('#selectBtn').textContent = on ? 'Done' : 'Select';
+  renderList();
+  renderSelectBar();
+}
+const prepared = new Map(); // name|version → File, ready for the share sheet
+let deleteArmed = null;
+
+function renderSelectBar() {
+  const sb = $('#selectBar');
+  sb.hidden = !state.selecting;
+  if (!state.selecting) return;
+  const chosen = state.files.filter(f => state.selected.has(f.name));
+  $('#selCount').textContent = chosen.length ? `${chosen.length} selected` : 'Select files';
+  const acts = [];
+  if (!chosen.length) {
+    acts.push('<button class="btn" type="button" data-act="all">Select all</button>');
+  } else {
+    if (canShareFiles) {
+      const size = chosen.reduce((s, f) => s + f.size, 0);
+      if (size > SHARE_LIMIT) {
+        acts.push('<button class="btn ink" type="button" disabled>Too big to share at once</button>');
+      } else {
+        const ready = chosen.every(f => prepared.has(f.name + '|' + f.v));
+        acts.push(`<button class="btn ink" type="button" data-act="share" ${ready ? '' : 'disabled'}>${ready ? 'Save or share' : 'Getting them…'}</button>`);
+        if (!ready) prepare(chosen).then(renderSelectBar, () => toast('Couldn’t get those files from your computer'));
+      }
+    } else if (!state.info?.local && !isIOS) {
+      acts.push('<button class="btn ink" type="button" data-act="download">Download</button>');
+    }
+    const armed = deleteArmed === 'selection';
+    acts.push(`<button class="btn ${armed ? 'confirm' : 'danger'}" type="button" data-act="delete">${armed ? `Delete ${chosen.length}?` : 'Delete'}</button>`);
+  }
+  $('#selActs').innerHTML = acts.join('');
+}
+
+$('#selActs').addEventListener('click', async e => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  const chosen = state.files.filter(f => state.selected.has(f.name));
+  switch (b.dataset.act) {
+    case 'all':
+      state.files.forEach(f => state.selected.add(f.name));
+      renderList();
+      renderSelectBar();
+      break;
+    case 'share':
+      if (await shareFiles(chosen)) setSelecting(false);
+      break;
+    case 'download':
+      for (const f of chosen) { download(f); await new Promise(r => setTimeout(r, 400)); }
+      break;
+    case 'delete':
+      if (deleteArmed !== 'selection') return arm('selection', renderSelectBar);
+      deleteArmed = null;
+      await removeFiles(chosen);
+      setSelecting(false);
+      break;
+  }
+});
+
+// A second tap within a few seconds confirms a delete.
+function arm(what, render) {
+  deleteArmed = what;
+  render();
+  setTimeout(() => { if (deleteArmed === what) { deleteArmed = null; render(); } }, 3500);
+}
+
+async function removeFiles(files) {
+  const failed = [];
+  await Promise.all(files.map(async f => {
+    const r = await fetch('/api/files/' + enc(f.name), { method: 'DELETE', headers: { 'X-Ferry': '1' } }).catch(() => null);
+    if (!r || (!r.ok && r.status !== 404)) failed.push(f);
+  }));
+  if (failed.length) toast(`Couldn’t delete ${describeFiles(failed)}`);
+  else toast(state.info?.local ? `Moved ${describeFiles(files)} to the ${state.info.trash}` : `Moved ${describeFiles(files)} to the ${state.info?.trash ?? 'Trash'} on ${state.info?.host ?? 'your computer'}`);
+}
+
+// MARK: Saving on the phone
+
+// The share sheet has to open straight from the tap, so files are fetched beforehand.
+const prepping = new Map();
+function prepare(files) {
+  return Promise.all(files.map(f => {
+    const key = f.name + '|' + f.v;
+    if (prepared.has(key)) return prepared.get(key);
+    if (!prepping.has(key)) {
+      prepping.set(key, fetch('/f/' + enc(f.name), { cache: 'no-store' })
+        .then(r => { if (!r.ok) throw new Error('fetch failed'); return r.blob(); })
+        .then(b => { const file = new File([b], f.name, { type: b.type || 'application/octet-stream' }); prepared.set(key, file); return file; })
+        .finally(() => prepping.delete(key)));
+    }
+    return prepping.get(key);
+  }));
+}
+
+async function shareFiles(files) {
+  const ready = files.map(f => prepared.get(f.name + '|' + f.v)).filter(Boolean);
+  if (ready.length !== files.length) return false;
+  try {
+    if (!navigator.canShare({ files: ready })) throw new Error('These files can’t be shared');
+    await navigator.share({ files: ready });
+    return true;
+  } catch (err) {
+    if (err.name !== 'AbortError') toast(err.message || 'Couldn’t open the share sheet');
+    return false;
+  }
+}
+
+// Puts an image on the clipboard as a PNG (the one image type every browser and app accepts). The
+// item is created inside the tap, with the picture still loading, as Safari requires.
+function copyImage(f) {
+  const source = f.native ? `/f/${enc(f.name)}` : `/thumb/${enc(f.name)}?s=large&v=${enc(f.v)}`;
+  const png = (async () => {
+    const blob = await (await fetch(source)).blob();
+    const bitmap = await createImageBitmap(blob);
+    const scale = Math.min(1, 4096 / Math.max(bitmap.width, bitmap.height)); // keep it pasteable
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    return await new Promise((resolve, reject) => canvas.toBlob(b => b ? resolve(b) : reject(new Error('no image')), 'image/png'));
+  })();
+  navigator.clipboard.write([new ClipboardItem({ 'image/png': png })])
+    .then(() => toast('Copied. Paste it anywhere'), () => toast('Couldn’t copy that image'));
+}
+
+function download(f) {
+  const a = document.createElement('a');
+  a.href = `/f/${enc(f.name)}?dl=1`;
+  a.download = f.name;
+  document.body.append(a);
+  a.click();
+  a.remove();
+}
+
+// MARK: Viewer
+
+const viewer = {
+  open: false,
+  name: null,
+  get index() { return state.files.findIndex(f => f.name === this.name); },
+
+  show(name) {
+    // A history entry, so the phone's back swipe closes the viewer rather than leaving Ferry.
+    if (!this.open) history.pushState({ ferryViewer: true }, '');
+    this.open = true;
+    this.name = name;
+    deleteArmed = null;
+    $('#viewer').hidden = false;
+    document.documentElement.style.overflow = 'hidden';
+    this.render();
+  },
+
+  hide() {
+    this.open = false;
+    $('#viewer').hidden = true;
+    document.documentElement.style.overflow = '';
+    this.clear();
+  },
+
+  clear() {
+    $('#vStage').querySelectorAll('img, video, audio, .v-doc').forEach(n => { if (n.pause) n.pause(); n.remove(); });
+    $('#vHint').hidden = true;
+    $('#vHint').textContent = '';
+  },
+
+  close() { history.state?.ferryViewer ? history.back() : this.hide(); },
+
+  step(d) {
+    const i = this.index + d;
+    if (i < 0 || i >= state.files.length) return;
+    this.name = state.files[i].name;
+    deleteArmed = null;
+    this.render();
+  },
+
+  // The list changed: keep showing this file, or close if it's gone.
+  sync() {
+    if (this.index >= 0) this.renderActions();
+    else this.close();
+  },
+
+  render() {
+    const f = state.files[this.index];
+    if (!f) return this.close();
+    $('#vName').textContent = f.name;
+    $('#vMeta').textContent = `From ${f.from} · ${fmtSize(f.size)} · ${dayLabel(f.added)}, ${timeLabel(f.added)}`;
+    $('#vPrev').disabled = this.index <= 0;
+    $('#vNext').disabled = this.index >= state.files.length - 1;
+    this.clear();
+    const src = `/f/${enc(f.name)}`;
+    const large = `/thumb/${enc(f.name)}?s=large&v=${enc(f.v)}`;
+    let node;
+    if (f.kind === 'image') {
+      node = new Image();
+      node.alt = f.name;
+      // Browsers that can't show it (HEIC outside Safari, RAW anywhere) get the computer's large preview.
+      node.onerror = () => { if (!node.dataset.fallback) { node.dataset.fallback = '1'; node.src = large; } };
+      node.src = (f.native || isIOS || isSafari) ? src : large;
+    } else if (f.kind === 'video') {
+      node = document.createElement('video');
+      node.controls = true;
+      node.playsInline = true;
+      node.preload = 'metadata';
+      node.poster = large;
+      node.src = src;
+      node.onerror = () => this.hint('This browser can’t play this video. Download it to watch.');
+    } else if (f.kind === 'audio') {
+      node = document.createElement('audio');
+      node.controls = true;
+      node.src = src;
+    } else if (f.kind === 'pdf') {
+      node = new Image();
+      node.alt = f.name;
+      node.onerror = () => node.replaceWith(docNode(f));
+      node.src = large;
+    } else {
+      node = docNode(f);
+    }
+    $('#vStage').prepend(node);
+    if (!state.info?.local && canShareFiles && f.size < SHARE_LIMIT) {
+      prepare([f]).then(() => { if (this.name === f.name) this.renderActions(); }, () => {});
+    }
+    this.renderActions();
+  },
+
+  hint(text) {
+    $('#vHint').textContent = text;
+    $('#vHint').hidden = !text;
+  },
+
+  renderActions() {
+    const f = state.files[this.index];
+    if (!f) return;
+    const info = state.info || {};
+    const acts = [];
+    if (info.local) {
+      acts.push(`<button class="pill primary" type="button" data-act="open">${icon.open}Open</button>`);
+      acts.push(`<button class="pill" type="button" data-act="reveal">${icon.finder}Show in ${info.fileManager || 'Finder'}</button>`);
+    } else if (canShareFiles && f.size < SHARE_LIMIT) {
+      const ready = prepared.has(f.name + '|' + f.v);
+      const label = f.kind === 'image' || f.kind === 'video' ? 'Save or share' : 'Share';
+      acts.push(`<button class="pill primary" type="button" data-act="share" ${ready ? '' : 'disabled'}>${icon.share}${ready ? label : 'Getting it…'}</button>`);
+    } else {
+      acts.push(`<a class="pill primary" href="/f/${enc(f.name)}?dl=1" download="${esc(f.name)}">${icon.down}Download</a>`);
+    }
+    if (f.kind === 'image' && canCopyImages) {
+      acts.push(`<button class="pill" type="button" data-act="copy">${icon.copy}Copy</button>`);
+    }
+    const armed = deleteArmed === 'viewer';
+    acts.push(`<button class="pill ${armed ? 'confirm' : 'danger'}" type="button" data-act="delete">${icon.trash}${armed ? `Move to the ${info.trash || 'Trash'}?` : 'Delete'}</button>`);
+    $('#vActions').innerHTML = acts.join('');
+    if (!$('#vHint').textContent.includes('can’t play')) {
+      let hint = '';
+      if (isIOS && !canShareFiles && f.kind === 'image') hint = 'Press and hold the photo to save it to Photos or copy it.';
+      else if (isIOS && !canShareFiles && f.kind === 'video') hint = 'Downloads go to the Files app. Set up the secure page to save videos to Photos in one tap.';
+      this.hint(hint);
+    }
+  },
+};
+
+function docNode(f) {
+  const d = document.createElement('div');
+  d.className = 'v-doc';
+  d.innerHTML = `<span class="ext">${esc(extOf(f.name))}</span><b>${esc(f.name)}</b><span>${fmtSize(f.size)}</span>`;
+  return d;
+}
+
+$('#vClose').onclick = () => viewer.close();
+$('#vPrev').onclick = () => viewer.step(-1);
+$('#vNext').onclick = () => viewer.step(1);
+addEventListener('popstate', () => { if (viewer.open) viewer.hide(); });
+addEventListener('keydown', e => {
+  if (!viewer.open) {
+    if (e.key === 'Escape' && !$('#sheet').hidden) $('#sheet').hidden = true;
+    return;
+  }
+  if (e.key === 'Escape') viewer.close();
+  else if (e.key === 'ArrowLeft') viewer.step(-1);
+  else if (e.key === 'ArrowRight') viewer.step(1);
+});
+$('#vActions').addEventListener('click', async e => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  const f = state.files[viewer.index];
+  if (!f) return;
+  switch (b.dataset.act) {
+    case 'open': post('/api/open/' + enc(f.name)).catch(() => toast('Couldn’t open it')); break;
+    case 'reveal': post('/api/reveal/' + enc(f.name)).catch(() => toast(`Couldn’t show it in ${state.info?.fileManager || 'Finder'}`)); break;
+    case 'copy': copyImage(f); break;
+    case 'share': await shareFiles([f]); break;
+    case 'delete': {
+      if (deleteArmed !== 'viewer') return arm('viewer', () => viewer.renderActions());
+      deleteArmed = null;
+      const next = state.files[viewer.index + 1] || state.files[viewer.index - 1];
+      await removeFiles([f]);
+      if (next) { viewer.name = next.name; viewer.render(); } else viewer.close();
+      break;
+    }
+  }
+});
+// On a phone: swipe sideways between files, down to close (one finger, not zoomed in).
+let touch = null;
+$('#vStage').addEventListener('touchstart', e => {
+  const zoomed = window.visualViewport && visualViewport.scale > 1.01;
+  touch = e.touches.length === 1 && !zoomed ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null;
+}, { passive: true });
+$('#vStage').addEventListener('touchend', e => {
+  if (!touch || e.target.closest('video, audio, button')) return;
+  const dx = e.changedTouches[0].clientX - touch.x, dy = e.changedTouches[0].clientY - touch.y;
+  touch = null;
+  if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) viewer.step(dx < 0 ? 1 : -1);
+  else if (dy > 110 && Math.abs(dy) > Math.abs(dx) * 1.5) viewer.close();
+}, { passive: true });
+
+// MARK: Setup sheet
+
+$('#setupOpen').onclick = () => { $('#sheet').hidden = false; };
+$('#setupLater').onclick = () => { prefs.set('ferry.setupLater', '1'); $('#setupCard').hidden = true; };
+$('#sheetClose').onclick = () => { $('#sheet').hidden = true; };
+$('#sheet').addEventListener('click', e => { if (e.target === $('#sheet')) $('#sheet').hidden = true; });
+
+connect();
+// Day headings ("Today") move on at midnight.
+setInterval(() => { if (state.loaded && !document.hidden) renderList(); }, 60_000);
+</script>
+</body>
+</html>

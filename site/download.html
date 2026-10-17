@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Download Ferry</title>
+<meta name="description" content="Download Ferry for Mac, Windows, Linux and Android.">
+<link rel="icon" href="img/icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300..700&family=Geist+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="./"><img src="img/icon.png" alt="">Ferry</a>
+    <nav aria-label="Site">
+      <a href="./#features">Features</a>
+      <a class="hide-sm" href="./#start">How it works</a>
+    </nav>
+  </header>
+
+  <section class="dl-hero">
+    <img src="img/icon.png" alt="">
+    <h1>Download Ferry</h1>
+    <p>Get it on your computers, then on your phones, as many as you like. Scan once and you’re connected.</p>
+  </section>
+
+  <main>
+    <div class="tabs" id="tabs" role="tablist" aria-label="Choose your device">
+      <button type="button" role="tab" id="tab-mac" data-p="mac" aria-controls="platform">Mac</button>
+      <button type="button" role="tab" id="tab-windows" data-p="windows" aria-controls="platform">Windows</button>
+      <button type="button" role="tab" id="tab-linux" data-p="linux" aria-controls="platform">Linux</button>
+      <button type="button" role="tab" id="tab-ios" data-p="ios" aria-controls="platform">iPhone</button>
+      <button type="button" role="tab" id="tab-android" data-p="android" aria-controls="platform">Android</button>
+    </div>
+    <p class="picked" id="picked" aria-live="polite"></p>
+    <section class="platform" id="platform" role="tabpanel" tabindex="0"></section>
+
+    <section class="section" id="next-phone">
+      <div class="section-head center">
+        <span class="label">Next</span>
+        <h2>Then get it on your phone.</h2>
+      </div>
+      <div class="phones">
+        <article class="way">
+          <div class="icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6.5" y="2.5" width="11" height="19" rx="3"/><path d="M10.5 5.5h3"/></svg></div>
+          <h3>iPhone</h3>
+          <p>The app is coming soon to the App Store. Until then, scan the code on your computer with the Camera and use Ferry in Safari.</p>
+        </article>
+        <article class="way">
+          <div class="icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6.5" y="2.5" width="11" height="19" rx="3"/><path d="M11 18.5h2"/></svg></div>
+          <h3>Android</h3>
+          <p>Get the app on your phone from this page, or scan the code on your computer to use Ferry in the browser.</p>
+          <div class="get"><a class="btn secondary" href="#android" data-show="android">Ferry for Android</a></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" id="next-computer" hidden>
+      <div class="section-head center">
+        <span class="label">Next</span>
+        <h2>Ferry on your computer comes first.</h2>
+        <p>Your phone sends to and from it. Open this page on your computer, or choose it here.</p>
+      </div>
+      <div class="ctas">
+        <a class="btn secondary" href="#mac" data-show="mac">Mac</a>
+        <a class="btn secondary" href="#windows" data-show="windows">Windows</a>
+        <a class="btn secondary" href="#linux" data-show="linux">Linux</a>
+      </div>
+    </section>
+
+    <section class="section" id="all" style="padding-top: 0">
+      <div class="section-head">
+        <span class="label">Everything</span>
+        <h2>All downloads</h2>
+        <p>Version 1.0. The command-line version is the same Ferry for terminals and servers, used from any browser.</p>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th scope="col">For</th><th scope="col">File</th><th scope="col">Size</th></tr></thead>
+          <tbody>
+            <tr><td>Mac, Apple silicon and Intel</td><td><a data-file="Ferry-mac.dmg">Ferry-mac.dmg</a></td><td class="num">11.7 MB</td></tr>
+            <tr><td>Windows, 64-bit</td><td><a data-file="Ferry-windows-x64.exe">Ferry-windows-x64.exe</a></td><td class="num">13.1 MB</td></tr>
+            <tr><td>Windows on ARM</td><td><a data-file="Ferry-windows-arm64.exe">Ferry-windows-arm64.exe</a></td><td class="num">12.2 MB</td></tr>
+            <tr><td>Linux, 64-bit (Ubuntu, Debian)</td><td><a data-file="Ferry-linux-x64.deb">Ferry-linux-x64.deb</a></td><td class="num">4.7 MB</td></tr>
+            <tr><td>Linux, 64-bit</td><td><a data-file="Ferry-linux-x64.tar.gz">Ferry-linux-x64.tar.gz</a></td><td class="num">5.9 MB</td></tr>
+            <tr><td>Linux on ARM (Ubuntu, Debian)</td><td><a data-file="Ferry-linux-arm64.deb">Ferry-linux-arm64.deb</a></td><td class="num">4.3 MB</td></tr>
+            <tr><td>Linux on ARM</td><td><a data-file="Ferry-linux-arm64.tar.gz">Ferry-linux-arm64.tar.gz</a></td><td class="num">5.5 MB</td></tr>
+            <tr><td>Android 10 or later</td><td><a data-file="Ferry-android.apk">Ferry-android.apk</a></td><td class="num">4.4 MB</td></tr>
+            <tr><td>Command line, macOS</td><td><a data-file="ferry-cli-macos-arm64">ferry-cli-macos-arm64</a> · <a data-file="ferry-cli-macos-amd64">amd64</a></td><td class="num">9.2 MB</td></tr>
+            <tr><td>Command line, Linux</td><td><a data-file="ferry-cli-linux-amd64">ferry-cli-linux-amd64</a> · <a data-file="ferry-cli-linux-arm64">arm64</a></td><td class="num">9.7 MB</td></tr>
+            <tr><td>Command line, Windows</td><td><a data-file="ferry-cli-windows-amd64.exe">ferry-cli-windows-amd64.exe</a> · <a data-file="ferry-cli-windows-arm64.exe">arm64</a></td><td class="num">10.0 MB</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="brewbox" style="margin-top: 24px; max-width: 44rem">
+        <p>With Homebrew on macOS or Linux, the command-line version installs and starts at login:</p>
+        <div class="cmd"><code>brew install lenajeremy/ferry/ferry &amp;&amp; brew services start ferry</code><button type="button" data-copy>Copy</button></div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <a class="brand" href="./"><img src="img/icon.png" alt="">Ferry</a>
+    <span>Files across your own Wi‑Fi.</span>
+    <nav aria-label="Footer"><a href="./#features">Features</a><a href="download.html">Download</a></nav>
+  </footer>
+</div>
+<script src="site.js"></script>
+</body>
+</html>

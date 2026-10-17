@@ -1,0 +1,42 @@
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+    <dict>
+        <key>CFBundlePackageType</key>
+        <string>APPL</string>
+        <key>CFBundleName</key>
+        <string>{{.Info.ProductName}}</string>
+        <key>CFBundleExecutable</key>
+        <string>{{.OutputFilename}}</string>
+        <key>CFBundleIdentifier</key>
+        <string>app.ferry.desktop</string>
+        <key>CFBundleVersion</key>
+        <string>{{.Info.ProductVersion}}</string>
+        <key>CFBundleGetInfoString</key>
+        <string>{{.Info.Comments}}</string>
+        <key>CFBundleShortVersionString</key>
+        <string>{{.Info.ProductVersion}}</string>
+        <key>CFBundleIconFile</key>
+        <string>iconfile</string>
+        <key>LSMinimumSystemVersion</key>
+        <string>11.0</string>
+        <key>LSApplicationCategoryType</key>
+        <string>public.app-category.utilities</string>
+        <key>NSHighResolutionCapable</key>
+        <string>true</string>
+        <key>NSHumanReadableCopyright</key>
+        <string>{{.Info.Copyright}}</string>
+        <!-- The window shows Ferry's own page on this computer (http://localhost). -->
+        <key>NSAppTransportSecurity</key>
+        <dict>
+            <key>NSAllowsLocalNetworking</key>
+            <true/>
+        </dict>
+        <!-- Phones find this computer with Bonjour, and send and fetch files over the Wi-Fi. -->
+        <key>NSLocalNetworkUsageDescription</key>
+        <string>Ferry lets your phone find this computer on your Wi-Fi, so you can send photos, videos and files between them.</string>
+        <key>NSBonjourServices</key>
+        <array>
+            <string>_ferry._tcp</string>
+        </array>
+    </dict>
+</plist>

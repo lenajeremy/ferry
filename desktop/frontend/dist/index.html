@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ferry</title>
+<style>
+:root { color-scheme: light dark; --bg: #F3F1EC; --ink: #16171A; --ink2: #5E6168; --accent: #EE5229; }
+@media (prefers-color-scheme: dark) { :root { --bg: #111214; --ink: #F3F2EF; --ink2: #A3A6AD; } }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg); color: var(--ink); display: grid; place-content: center; justify-items: center; gap: 14px;
+  padding: 24px; text-align: center; font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Ubuntu, sans-serif;
+  -webkit-user-select: none; user-select: none; cursor: default;
+}
+img { width: 76px; height: 76px; border-radius: 19px; box-shadow: 0 8px 24px rgba(0, 0, 0, .14); }
+h1 { margin: 0; font-size: 18px; font-weight: 650; letter-spacing: -.01em; }
+p { margin: 0; color: var(--ink2); max-width: 34ch; }
+button { margin-top: 6px; border: 0; border-radius: 12px; padding: 10px 18px; background: var(--ink); color: var(--bg); font: inherit; font-weight: 600; cursor: pointer; }
+.wait p::after { content: ""; animation: dots 1.2s steps(4) infinite; }
+@keyframes dots { 0% { content: ""; } 25% { content: "."; } 50% { content: ".."; } 75% { content: "..."; } }
+</style>
+</head>
+<body class="wait">
+<img src="icon.png" alt="">
+<h1>Ferry</h1>
+<p id="msg">Starting</p>
+<button id="retry" type="button" hidden>Try again</button>
+<script>
+const msg = document.getElementById('msg'), retry = document.getElementById('retry');
+
+async function start() {
+  document.body.className = 'wait';
+  msg.textContent = 'Starting';
+  retry.hidden = true;
+  for (let i = 0; i < 200 && !window.go?.main?.App; i++) await new Promise(r => setTimeout(r, 25));
+  try {
+    location.replace(await window.go.main.App.Start());
+  } catch (err) {
+    document.body.className = '';
+    const text = String(err?.message ?? err);
+    msg.textContent = text.charAt(0).toUpperCase() + text.slice(1) + '.';
+    retry.hidden = false;
+  }
+}
+retry.onclick = start;
+start();
+</script>
+</body>
+</html>

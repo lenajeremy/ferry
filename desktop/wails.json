@@ -1,0 +1,15 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "Ferry",
+  "outputfilename": "Ferry",
+  "frontend:install": "",
+  "frontend:build": "",
+  "author": { "name": "Ferry" },
+  "info": {
+    "companyName": "Ferry",
+    "productName": "Ferry",
+    "productVersion": "1.0.0",
+    "copyright": "",
+    "comments": "Share photos, videos and files between your phone and your computer over your own Wi-Fi."
+  }
+}

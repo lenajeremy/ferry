@@ -1,0 +1,18 @@
+# Builds (release.sh puts the downloads in dist/, which go up as a GitHub release, not into git)
+/ferry
+/ferry.exe
+/dist/
+/desktop/build/bin/
+/desktop/build/linux-out/
+/desktop/frontend/wailsjs/
+/ios/build/
+/ios/Ferry.xcodeproj/
+/android/.gradle/
+/android/.kotlin/
+/android/build/
+/android/app/build/
+/android/local.properties
+# The Homebrew tap is its own repo (lenajeremy/homebrew-ferry), written by packaging/homebrew.sh
+/packaging/homebrew/
+.DS_Store
+*.log

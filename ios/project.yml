@@ -1,0 +1,105 @@
+name: Ferry
+options:
+  bundleIdPrefix: app.ferry
+  deploymentTarget:
+    iOS: "26.0"
+  createIntermediateGroups: true
+  developmentLanguage: en
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+    SWIFT_APPROACHABLE_CONCURRENCY: YES
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: N58PT393QS
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+targets:
+  Ferry:
+    type: application
+    platform: iOS
+    sources:
+      - path: Ferry
+      - path: Shared
+    dependencies:
+      - target: FerryShare
+    info:
+      path: Ferry/Info.plist
+      properties:
+        CFBundleDisplayName: Ferry
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        FerryKeychainGroup: $(AppIdentifierPrefix)app.ferry.shared
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        NSLocalNetworkUsageDescription: Ferry finds your Mac on this Wi-Fi and sends files to it directly.
+        NSBonjourServices:
+          - _ferry._tcp
+        NSCameraUsageDescription: Ferry uses the camera to scan the code on your Mac's screen.
+        NSPhotoLibraryAddUsageDescription: Ferry saves the photos and videos you choose to your library.
+        ITSAppUsesNonExemptEncryption: false
+    entitlements:
+      path: Ferry/Ferry.entitlements
+      properties:
+        keychain-access-groups:
+          - $(AppIdentifierPrefix)app.ferry.shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.ferry.ios
+        PRODUCT_NAME: Ferry
+        TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+  FerryShare:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: FerryShare
+      - path: Shared
+    info:
+      path: FerryShare/Info.plist
+      properties:
+        CFBundleDisplayName: Ferry
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        FerryKeychainGroup: $(AppIdentifierPrefix)app.ferry.shared
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        NSLocalNetworkUsageDescription: Ferry sends what you share to your Mac on this Wi-Fi.
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsImageWithMaxCount: 100
+              NSExtensionActivationSupportsMovieWithMaxCount: 50
+              NSExtensionActivationSupportsFileWithMaxCount: 50
+    entitlements:
+      path: FerryShare/FerryShare.entitlements
+      properties:
+        keychain-access-groups:
+          - $(AppIdentifierPrefix)app.ferry.shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.ferry.ios.share
+        PRODUCT_NAME: FerryShare
+        TARGETED_DEVICE_FAMILY: "1"
+        SKIP_INSTALL: YES
+        APPLICATION_EXTENSION_API_ONLY: YES
+  FerryTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: FerryTests
+    dependencies:
+      - target: Ferry
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: app.ferry.ios.tests
