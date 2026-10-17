@@ -5,6 +5,9 @@
 # The app must exist in App Store Connect first (bundle ID app.ferry.ios).
 set -e
 cd "${0:A:h}"
+# App Store Connect only takes builds from released Xcodes (or release candidates), never betas.
+if [[ -z $DEVELOPER_DIR && -d /Applications/Xcode.app ]]; then export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer; fi
+echo "Building with $(xcodebuild -version | head -1)"
 xcodegen generate -q
 auth=()
 if [[ -n $ASC_KEY_PATH ]]; then
@@ -15,10 +18,10 @@ xcodebuild -project Ferry.xcodeproj -scheme Ferry -configuration Release -destin
   -archivePath build/Ferry.xcarchive -allowProvisioningUpdates $auth archive | grep -E "error|ARCHIVE" || true
 [[ -d build/Ferry.xcarchive ]] || { echo "The archive failed."; exit 1; }
 out=$(xcodebuild -exportArchive -archivePath build/Ferry.xcarchive -exportOptionsPlist ExportOptions.plist \
-  -exportPath build/export -allowProvisioningUpdates $auth 2>&1)
+  -exportPath build/export -allowProvisioningUpdates $auth 2>&1) || true
 echo "$out" | grep -E "error|EXPORT|Upload|upload" || true
 if ! echo "$out" | grep -q "EXPORT SUCCEEDED"; then
-  echo "Not uploaded. Sign Xcode in to the team's Apple account, or pass an App Store Connect API key (see the top of this script)."
+  echo "Not uploaded (the reason is above). Signing needs Xcode signed in to the team, or an App Store Connect API key (see the top)."
   exit 1
 fi
 echo "Uploaded. It shows in App Store Connect › TestFlight once Apple has processed it (usually 5–15 minutes)."

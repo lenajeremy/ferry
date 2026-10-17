@@ -2,6 +2,13 @@
 
 Everything Ferry needs for TestFlight, the App Store and Google Play: what's ready, what to paste where, and the steps only the account holder can do.
 
+## Where it stands (17 October 2026)
+
+- **TestFlight:** "Ferry File Transfer" (App Store Connect app 6824059394, bundle ID app.ferry.ios). Build 1.0.0 (1) is in internal testing for the "Ferry testers" group. Upload new builds with `ios/upload.sh` and an API key (it builds with the released Xcode; App Store Connect refuses beta Xcodes).
+- **Google Play:** "Ferry File Transfer" (package app.ferry). Release 1 (1.0.0) is out on internal testing to the "Ferry testers" list; testers join at https://play.google.com/apps/internaltest/4701223977154879298. Play App Signing is on.
+- **Before a public release:** store listings and screenshots, Play's app content forms, a closed test (12 testers, 14 days) for this personal Play account, Apple's updated Paid Applications Schedule (the account holder accepts it) and EU trader status, then review on both stores.
+- **The GitHub APK:** register app.ferry and the upload key under Play Console › Android developer verification, so the APK from GitHub keeps installing on certified Android devices.
+
 ## Ready
 
 | | Where |
