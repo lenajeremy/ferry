@@ -17,6 +17,8 @@ done
 
 echo "• Mac app"
 (cd desktop && $wails build -platform darwin/universal -trimpath -s -clean >/dev/null)
+# Share › Ferry: the share extension goes inside the app (needs Xcode and XcodeGen).
+desktop/mac-share/build.sh desktop/build/bin/Ferry.app
 stage=$(mktemp -d) && cp -R desktop/build/bin/Ferry.app $stage/ && ln -s /Applications $stage/Applications
 hdiutil create -quiet -volname Ferry -srcfolder $stage -ov -format UDZO dist/Ferry-mac.dmg && rm -rf $stage
 

@@ -12,10 +12,13 @@ The website is live at **https://ferry-chi.vercel.app** (Vercel project `ferry`,
 
 `desktop/` is Ferry in a window (Go with [Wails](https://wails.io) v2, using the system's own web view: about 12 MB). It starts Ferry and shows its page; if Ferry already runs on this computer (at login or in a terminal), it shows that one instead. On a Mac it adds **File › Send Files…** (⌘O) and **Open the Ferry Folder** (⇧⌘O). Quitting the app stops the Ferry it started.
 
+On a Mac, **Share › Ferry** works everywhere: pick files in Finder, or photos and videos in Photos (or anything another app shares), choose Share › Ferry, and they go straight to Ferry, so they're on your phone. It opens Ferry first if it isn't running. It's a share extension inside Ferry.app (`desktop/mac-share/`, Swift, macOS 12 or later), switched on the first time the app runs; it can be turned off in System Settings › General › Login Items & Extensions › Sharing.
+
 ```sh
 go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0
 cd desktop
 wails build -platform darwin/universal -trimpath -s       # build/bin/Ferry.app
+mac-share/build.sh build/bin/Ferry.app                    # adds Share › Ferry (needs Xcode and XcodeGen)
 wails build -platform windows/amd64 -trimpath -s          # build/bin/Ferry.exe (cross-built from the Mac)
 ```
 

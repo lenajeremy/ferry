@@ -7,6 +7,8 @@
 /desktop/frontend/wailsjs/
 /ios/build/
 /ios/Ferry.xcodeproj/
+/desktop/mac-share/FerryShare.xcodeproj/
+/desktop/mac-share/build/
 /android/.gradle/
 /android/.kotlin/
 /android/build/

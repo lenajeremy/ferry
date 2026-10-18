@@ -1,0 +1,53 @@
+# Ferry's share extension for the Mac app: Share › Ferry in Finder, Photos and any app's share
+# menu sends the files to the Ferry running on this Mac, so they're on your phone.
+# build.sh builds it and puts it inside a Ferry.app (release.sh does this for the download).
+# macOS 12 or later (the oldest Xcode 27 builds for); on 11 the app runs without it.
+name: FerryShare
+options:
+  bundleIdPrefix: app.ferry
+  deploymentTarget:
+    macOS: "12.0"
+targets:
+  FerryShare:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: FerryShare
+    info:
+      path: FerryShare/Info.plist
+      properties:
+        CFBundleDisplayName: Ferry
+        CFBundleShortVersionString: "1.0.0"
+        CFBundleVersion: "1"
+        NSHumanReadableCopyright: ""
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
+          NSExtensionAttributes:
+            # Files, photos and videos (not text or links).
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsFileWithMaxCount: 200
+              NSExtensionActivationSupportsImageWithMaxCount: 200
+              NSExtensionActivationSupportsMovieWithMaxCount: 200
+        # It talks to Ferry on this Mac (http://127.0.0.1).
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+    entitlements:
+      path: FerryShare/FerryShare.entitlements
+      properties:
+        # Extensions must be sandboxed; it only needs to reach Ferry on this Mac.
+        com.apple.security.app-sandbox: true
+        com.apple.security.network.client: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.ferry.desktop.share
+        PRODUCT_NAME: FerryShare
+        # Signed to run locally, like the app (no developer account needed).
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Manual
+        DEVELOPMENT_TEAM: ""
+        SWIFT_VERSION: "5.0"
+        # Universal, like the app.
+        ARCHS: "arm64 x86_64"
+        ONLY_ACTIVE_ARCH: NO
+        ENABLE_HARDENED_RUNTIME: NO

@@ -48,7 +48,10 @@ func NewApp() *App {
 	return &App{cfg: cfg, base: fmt.Sprintf("http://localhost:%d", cfg.Port)}
 }
 
-func (a *App) startup(ctx context.Context) { a.ctx = ctx }
+func (a *App) startup(ctx context.Context) {
+	a.ctx = ctx
+	go enableShareMenu(a.cfg.DataDir)
+}
 
 func (a *App) shutdown(context.Context) {
 	a.mu.Lock()
