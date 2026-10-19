@@ -44,14 +44,15 @@ const PLATFORMS = {
     ],
   },
   ios: {
-    tab: 'iPhone', title: 'Ferry for iPhone', picked: 'Picked for your iPhone',
-    req: 'iPhone and iPad, in Safari.',
-    note: 'No app needed: Ferry works in Safari',
+    tab: 'iPhone', title: 'Ferry for iPhone', button: 'Get the beta on TestFlight', picked: 'Picked for your iPhone',
+    req: 'iOS 26 or later. The app is in beta, through Apple’s TestFlight.',
+    url: 'https://testflight.apple.com/join/cxtxBs4E',
+    note: 'Or skip the app: scan the code with the Camera and use Ferry in Safari.',
     others: [],
     steps: [
       ['Get Ferry on your computer', ' first: Mac, Windows or Linux.'],
-      ['Open the Camera', ' and point it at the code on your computer’s screen.'],
-      ['Use Ferry in Safari.', ' Everything works there. Share › Add to Home Screen keeps it a tap away.'],
+      ['Open the TestFlight link on your iPhone.', ' Install TestFlight if it asks, then install Ferry from it.'],
+      ['Scan the code', ' on your computer’s screen with the app. That’s it.'],
     ],
   },
   android: {
@@ -123,9 +124,9 @@ if (panel) {
     });
     document.getElementById('picked').textContent = key === detected ? p.picked : '';
 
-    const get = p.note
-      ? `<span class="note">${icons.compass}${p.note}</span>`
-      : `<a class="btn primary big" href="${RELEASE}${p.file}">${icons.down}<span>${p.button}</span></a><span class="size">${p.size}</span>`;
+    const get = `<a class="btn primary big" href="${p.url || RELEASE + p.file}">${icons.down}<span>${p.button}</span></a>`
+      + (p.size ? `<span class="size">${p.size}</span>` : '');
+    const note = p.note ? `<p class="note">${icons.compass}<span>${p.note}</span></p>` : '';
     const others = p.others.length
       ? `<div class="others"><span>Also:</span>${p.others.map(o => `<a href="${RELEASE}${o.file}">${o.label}</a>`).join('')}</div>`
       : '';
@@ -137,11 +138,12 @@ if (panel) {
         <h2>${p.title}</h2>
         <p class="req">${p.req}</p>
         <div class="get">${get}</div>
+        ${note}
         ${others}
         ${brew}
       </div>
       <div class="after">
-        <h3>${p.note ? 'Get started' : 'After you download'}</h3>
+        <h3>${p.url ? 'Get started' : 'After you download'}</h3>
         <ol>${p.steps.map(([lead, rest]) => `<li><span><b>${lead}</b>${rest}</span></li>`).join('')}</ol>
       </div>`;
     panel.setAttribute('aria-labelledby', `tab-${key}`);
@@ -170,8 +172,9 @@ if (panel) {
     tabs.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }));
 
-  // Release links in the table.
+  // Release links in the table, and the version they're from.
   document.querySelectorAll('[data-file]').forEach(a => { a.href = RELEASE + a.dataset.file; });
+  document.querySelectorAll('[data-version]').forEach(e => { e.textContent = VERSION; });
 
   const fromHash = location.hash.slice(1);
   show(PLATFORMS[fromHash] ? fromHash : detected || 'mac');
