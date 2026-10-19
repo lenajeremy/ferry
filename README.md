@@ -14,6 +14,8 @@ The website is live at **https://ferry-chi.vercel.app** (Vercel project `ferry`,
 
 On a Mac, **Share › Ferry** works everywhere: pick files in Finder, or photos and videos in Photos (or anything another app shares), choose Share › Ferry, and they go straight to Ferry, so they're on your phone. It opens Ferry first if it isn't running. It's a share extension inside Ferry.app (`desktop/mac-share/`, Swift, macOS 12 or later), switched on the first time the app runs; it can be turned off in System Settings › General › Login Items & Extensions › Sharing.
 
+On Windows, **Send to › Ferry** does the same: select files in File Explorer, right-click, and choose Send to › Ferry (on Windows 11, under Show more options). On Linux, right-click files and choose **Send with Ferry**: in GNOME Files it's under Scripts, in Dolphin and Nemo it's in the menu itself. Either way the files go to the Ferry that's open, or Ferry opens and sends them. The app adds these the first time it runs (`desktop/share_windows.go`, `desktop/filemenus.go`): a shortcut in the Send to folder on Windows (`shell:sendto` in File Explorer's address bar), and on Linux a small file for each file manager installed, in `~/.local/share/nautilus/scripts/`, `kio/servicemenus/` and `nemo/actions/`. They follow Ferry if it moves, and one you delete stays deleted.
+
 ```sh
 go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0
 cd desktop
@@ -190,7 +192,7 @@ Ferry itself is Go, standard library only: the `server` package, with the page e
 | `server/host.go` | The computer's name, `.local` name and network addresses |
 | `qr/` | A QR code encoder (byte mode, level M, versions 1–10) |
 | `server/web/index.html` | The page, for the computer (browser or app) and the phone's browser |
-| `desktop/` | The desktop app (Wails): the window, the Mac menu, the Linux packaging |
+| `desktop/` | The desktop app (Wails): the window, the Mac menu, Share › Ferry, Send to and Send with Ferry, the Linux packaging |
 | `packaging/` | The Homebrew tap |
 | `site/` | The website and downloads page |
 

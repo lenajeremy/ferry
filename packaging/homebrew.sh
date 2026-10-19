@@ -7,7 +7,7 @@
 #   brew install --cask lenajeremy/ferry/ferry-app   the Mac app
 set -e
 cd "${0:A:h}"
-version=${FERRY_VERSION:-1.0.0}
+version=${FERRY_VERSION:-1.0.1}
 base=${1:-https://github.com/lenajeremy/ferry/releases/download/v$version}
 dist=../dist
 sum() { shasum -a 256 $dist/$1 | cut -d' ' -f1 }

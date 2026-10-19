@@ -41,7 +41,10 @@ fi
 
 if [[ -x android/gradlew ]]; then
   echo "• Android app"
-  (cd android && JAVA_HOME=${JAVA_HOME:-$(/usr/libexec/java_home -v 21)} ./gradlew -q assembleRelease)
+  # JDK 21: Homebrew's (java_home doesn't know it, and hands back a newer JDK that Gradle refuses).
+  jdk21=$(brew --prefix openjdk@21 2>/dev/null)/libexec/openjdk.jdk/Contents/Home
+  [[ -d $jdk21 ]] || jdk21=$(/usr/libexec/java_home -v 21)
+  (cd android && JAVA_HOME=${JAVA_HOME:-$jdk21} ./gradlew -q assembleRelease)
   cp android/app/build/outputs/apk/release/app-release.apk dist/Ferry-android.apk
 fi
 ls -lh dist | awk 'NR>1 {print $5, $9}'

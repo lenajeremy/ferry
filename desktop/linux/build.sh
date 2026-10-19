@@ -4,6 +4,7 @@ set -e
 arch=$(dpkg --print-architecture)            # amd64 or arm64
 label=$([ "$arch" = amd64 ] && echo x64 || echo arm64)
 cd /src/desktop
+version=$(sed -n 's/.*"productVersion": *"\([^"]*\)".*/\1/p' wails.json)
 go build -tags desktop,production,webkit2_41 -trimpath -ldflags "-s -w" -o /tmp/Ferry .
 
 # .deb: /usr/lib/ferry/Ferry, a menu entry and icons.
@@ -15,7 +16,7 @@ mkdir -p $pkg/usr/bin && ln -s ../lib/ferry/Ferry $pkg/usr/bin/ferry-app
 mkdir -p $pkg/DEBIAN
 cat > $pkg/DEBIAN/control <<CONTROL
 Package: ferry
-Version: 1.0.0
+Version: $version
 Architecture: $arch
 Maintainer: Ferry <hello@ferry.app>
 Depends: libgtk-3-0 | libgtk-3-0t64, libwebkit2gtk-4.1-0

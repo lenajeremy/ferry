@@ -1,13 +1,13 @@
 // Ferry's site: works out which system the visitor is on, so every "Download" button offers the right
 // file, and fills in the downloads page. Every file comes from one place, the GitHub release.
-const VERSION = '1.0.0';
+const VERSION = '1.0.1';
 const RELEASE = `https://github.com/lenajeremy/ferry/releases/download/v${VERSION}/`;
 
 const PLATFORMS = {
   mac: {
     tab: 'Mac', title: 'Ferry for Mac', button: 'Download for Mac', picked: 'Picked for your Mac',
     req: 'macOS 11 or later, on Apple silicon or Intel.',
-    file: 'Ferry-mac.dmg', size: '11.7 MB',
+    file: 'Ferry-mac.dmg', size: '11.8 MB',
     others: [],
     brew: { cmd: 'brew install --cask lenajeremy/ferry/ferry-app', text: 'Or install it with Homebrew:' },
     steps: [
@@ -19,7 +19,7 @@ const PLATFORMS = {
   windows: {
     tab: 'Windows', title: 'Ferry for Windows', button: 'Download for Windows', picked: 'Picked for your PC',
     req: 'Windows 10 or 11, 64-bit.',
-    file: 'Ferry-windows-x64.exe', size: '13.1 MB',
+    file: 'Ferry-windows-x64.exe', size: '13.2 MB',
     others: [{ label: 'For ARM PCs', file: 'Ferry-windows-arm64.exe' }],
     steps: [
       ['Open <b>Ferry-windows-x64.exe</b>.', ' There’s nothing to install.'],
@@ -45,13 +45,13 @@ const PLATFORMS = {
   },
   ios: {
     tab: 'iPhone', title: 'Ferry for iPhone', picked: 'Picked for your iPhone',
-    req: 'Save to Photos, Copy, and Ferry in the share sheet.',
-    soon: 'Coming soon to the App Store',
+    req: 'iPhone and iPad, in Safari.',
+    note: 'No app needed: Ferry works in Safari',
     others: [],
     steps: [
       ['Get Ferry on your computer', ' first: Mac, Windows or Linux.'],
       ['Open the Camera', ' and point it at the code on your computer’s screen.'],
-      ['Use Ferry in Safari', ' until the app arrives. Everything works there too.'],
+      ['Use Ferry in Safari.', ' Everything works there. Share › Add to Home Screen keeps it a tap away.'],
     ],
   },
   android: {
@@ -110,7 +110,7 @@ if (panel) {
   const tabs = document.getElementById('tabs');
   const icons = {
     down: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v12M6 11l6 6 6-6M5 20h14"/></svg>',
-    clock: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
+    compass: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="m15.5 8.5-2 5-5 2 2-5z"/></svg>',
   };
 
   const show = (key, focus) => {
@@ -123,8 +123,8 @@ if (panel) {
     });
     document.getElementById('picked').textContent = key === detected ? p.picked : '';
 
-    const get = p.soon
-      ? `<span class="soon">${icons.clock}${p.soon}</span>`
+    const get = p.note
+      ? `<span class="note">${icons.compass}${p.note}</span>`
       : `<a class="btn primary big" href="${RELEASE}${p.file}">${icons.down}<span>${p.button}</span></a><span class="size">${p.size}</span>`;
     const others = p.others.length
       ? `<div class="others"><span>Also:</span>${p.others.map(o => `<a href="${RELEASE}${o.file}">${o.label}</a>`).join('')}</div>`
@@ -141,7 +141,7 @@ if (panel) {
         ${brew}
       </div>
       <div class="after">
-        <h3>${p.soon ? 'Until then' : 'After you download'}</h3>
+        <h3>${p.note ? 'Get started' : 'After you download'}</h3>
         <ol>${p.steps.map(([lead, rest]) => `<li><span><b>${lead}</b>${rest}</span></li>`).join('')}</ol>
       </div>`;
     panel.setAttribute('aria-labelledby', `tab-${key}`);
