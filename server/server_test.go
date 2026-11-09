@@ -11,8 +11,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"testing/fstest"
+	"time"
 )
 
 const testCode = "k7m2q9xa"
@@ -375,5 +378,194 @@ func TestAuthorityOnlyVouchesForTheHomeNetwork(t *testing.T) {
 	}
 	if _, err := bad.Leaf.Verify(x509.VerifyOptions{Roots: roots, DNSName: "bank.example.com"}); err == nil {
 		t.Error("a certificate for bank.example.com verified")
+	}
+	// Peer-to-peer Wi-Fi (awdl0 fe80::), link-local IPv4 (169.254.x.x) and direct hotspots verify.
+	p2pLeaf, err := ca.Issue([]string{"test-mac.local", "localhost"}, []net.IP{
+		net.ParseIP("fe80::48fc:a3ff:fe7e:4469"),
+		net.ParseIP("169.254.10.20"),
+		net.ParseIP("192.168.137.1"),
+		net.ParseIP("172.20.10.2"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, addr := range []string{"fe80::48fc:a3ff:fe7e:4469", "169.254.10.20", "192.168.137.1", "172.20.10.2"} {
+		if _, err := p2pLeaf.Leaf.Verify(x509.VerifyOptions{Roots: roots, DNSName: addr}); err != nil {
+			t.Errorf("offline address %s: %v", addr, err)
+		}
+	}
+}
+
+// fakeHotspot stands in for the system's direct Wi-Fi: it counts starts and stops, and off(), which
+// ends it as if it went off by itself.
+func fakeHotspot(t *testing.T) (starts, stops *atomic.Int32, off func()) {
+	starts, stops = new(atomic.Int32), new(atomic.Int32)
+	var mu sync.Mutex
+	var ended chan struct{}
+	was := [3]any{hotspotAvailable, hotspotWarning, startHotspot}
+	hotspotAvailable = func() bool { return true }
+	hotspotWarning = func() string { return "This computer leaves \"Home\" while it's on." }
+	startHotspot = func(ssid, password string) (hotspotRun, error) {
+		starts.Add(1)
+		time.Sleep(50 * time.Millisecond)
+		mu.Lock()
+		defer mu.Unlock()
+		ended = make(chan struct{})
+		return hotspotRun{ssid: ssid, password: password, ip: "192.168.137.1", stop: func() { stops.Add(1) }, ended: ended}, nil
+	}
+	t.Cleanup(func() {
+		hotspotAvailable = was[0].(func() bool)
+		hotspotWarning = was[1].(func() string)
+		startHotspot = was[2].(func(string, string) (hotspotRun, error))
+	})
+	return starts, stops, func() { mu.Lock(); close(ended); mu.Unlock() }
+}
+
+func TestDirectWiFi(t *testing.T) {
+	starts, stops, off := fakeHotspot(t)
+	s, _ := newTestServer(t)
+	ferry := func(r *http.Request) { r.Header.Set("X-Ferry", "1") }
+
+	// Only this computer starts it, sees it, or shows its code; phones don't, paired or not.
+	if w := do(s, "POST", "/api/hotspot", "192.168.0.50", nil, func(r *http.Request) { paired(r); ferry(r) }); w.Code != http.StatusNotFound {
+		t.Fatalf("a phone started it: %d", w.Code)
+	}
+	if w := do(s, "POST", "/api/hotspot", "192.168.0.50", nil, ferry); w.Code != http.StatusUnauthorized {
+		t.Fatalf("a stranger: %d", w.Code)
+	}
+	var st HotspotState
+	json.NewDecoder(do(s, "GET", "/api/hotspot", "127.0.0.1", nil, nil).Body).Decode(&st)
+	if !st.Supported || st.Active || st.Warning == "" {
+		t.Fatalf("before: %+v", st)
+	}
+
+	// Two clicks at once start one.
+	var wg sync.WaitGroup
+	for range 2 {
+		wg.Add(1)
+		go func() { defer wg.Done(); do(s, "POST", "/api/hotspot", "127.0.0.1", nil, ferry) }()
+	}
+	wg.Wait()
+	if n := starts.Load(); n != 1 {
+		t.Errorf("started %d times", n)
+	}
+	json.NewDecoder(do(s, "GET", "/api/hotspot", "127.0.0.1", nil, nil).Body).Decode(&st)
+	if !st.Active || !strings.HasPrefix(st.SSID, "Ferry-") || len(st.Password) != 12 || st.IP != "192.168.137.1" {
+		t.Fatalf("on: %+v", st)
+	}
+
+	// While it's on, the code carries the network, and points at the computer there.
+	_, byIP := s.PhoneURLs()
+	if !strings.Contains(byIP, "&w="+st.SSID) || !strings.Contains(byIP, "&p="+st.Password) || !strings.HasPrefix(byIP, "http://192.168.137.1:") {
+		t.Errorf("the code while on: %s", strings.ReplaceAll(byIP, testCode, "<code>"))
+	}
+	if w := do(s, "GET", "/wifi-qr.svg", "127.0.0.1", nil, nil); w.Code != 200 || !strings.HasPrefix(w.Body.String(), "<svg") {
+		t.Errorf("Wi-Fi code: %d", w.Code)
+	}
+	if w := do(s, "GET", "/wifi-qr.svg", "192.168.0.50", nil, paired); w.Code != http.StatusNotFound {
+		t.Errorf("a phone got the Wi-Fi code: %d", w.Code)
+	}
+	if w := do(s, "GET", "/api/info", "192.168.0.50", nil, paired); strings.Contains(w.Body.String(), st.Password) {
+		t.Error("a phone was told the password")
+	}
+
+	// It went off by itself: Ferry notices.
+	off()
+	for i := 0; i < 50 && s.hotspot.state().Active; i++ {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if s.hotspot.state().Active {
+		t.Error("still on after it went off")
+	}
+	if _, byIP := s.PhoneURLs(); strings.Contains(byIP, "&w=") {
+		t.Error("the code still offers the network")
+	}
+
+	// Turning it off from the page.
+	if w := do(s, "POST", "/api/hotspot", "127.0.0.1", nil, ferry); w.Code != 200 {
+		t.Fatalf("start again: %d %s", w.Code, w.Body)
+	}
+	if w := do(s, "DELETE", "/api/hotspot", "127.0.0.1", nil, ferry); w.Code != 200 || stops.Load() != 1 {
+		t.Errorf("stop: %d, stopped %d times", w.Code, stops.Load())
+	}
+}
+
+func TestHotspotNames(t *testing.T) {
+	for in, want := range map[string]string{"Jeremiah's MacBook Pro": "Jeremiahs-MacBook-Pro", "  ": "PC", "Studio PC 2026 (Main Office) West": "Studio-PC-2026-Main-Office", "Zoë": "Zo"} {
+		if got := hotspotLabel(in); got != want {
+			t.Errorf("hotspotLabel(%q) = %q, want %q", in, got, want)
+		}
+	}
+	if got := wifiQRString("Ferry;Home", `p:a"s`); got != `WIFI:T:WPA;S:Ferry\;Home;P:p\:a\"s;;` {
+		t.Errorf("wifiQRString: %s", got)
+	}
+}
+
+// On Windows and Linux the apps find a computer by the name Ferry's own announcer answers to, which its
+// certificate has to cover for their encrypted connection to accept it.
+func TestTheAnnouncedNameIsInTheCertificate(t *testing.T) {
+	t.Setenv("FERRY_MDNS", "builtin")
+	s, _ := newTestServer(t)
+	ca, err := LoadOrCreateAuthority(t.TempDir(), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.ca = ca
+	cert, err := s.issue(Host{Name: "Studio PC", IPs: []net.IP{net.ParseIP("192.168.0.9")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cert.Leaf.VerifyHostname("studio-pc-ferry.local"); err != nil {
+		t.Errorf("studio-pc-ferry.local: %v (names %v)", err, cert.Leaf.DNSNames)
+	}
+}
+
+func TestTailscaleAddresses(t *testing.T) {
+	for _, c := range []struct {
+		iface, ip string
+		want      bool
+	}{
+		{"utun4", "100.101.102.103", true},
+		{"tailscale0", "100.64.0.1", true},
+		{"Tailscale", "100.127.255.254", true},
+		{"utun4", "100.63.255.255", false}, // just below the range
+		{"utun4", "100.128.0.1", false},    // just above it
+		{"en0", "100.70.1.2", false},       // a provider's shared address on a real network card
+		{"utun4", "192.168.1.5", false},    // somebody else's VPN
+		{"utun4", "fd7a:115c:a1e0::1", false},
+	} {
+		if got := isTailnet(c.iface, net.ParseIP(c.ip)); got != c.want {
+			t.Errorf("isTailnet(%s, %s) = %v", c.iface, c.ip, got)
+		}
+	}
+}
+
+// A Tailscale address is told to paired devices only, isn't in the certificate (Ferry's authority can only
+// vouch for home-network addresses), and doesn't make anything count as this computer.
+func TestTailscaleAddressStaysOutOfTheCertificateAndAwayFromStrangers(t *testing.T) {
+	c := newComputer(t, "mac1", "MacBook Pro", "macmac22")
+	h := c.h()
+	h.Tailnet = "100.101.102.103"
+	c.current.Store(&h)
+
+	cert, err := c.issue(h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ip := range cert.Leaf.IPAddresses {
+		if ip.String() == h.Tailnet {
+			t.Error("the certificate lists the Tailscale address")
+		}
+	}
+	if h.isSelf(net.ParseIP(h.Tailnet)) {
+		t.Error("the Tailscale address counts as this computer")
+	}
+
+	r := httptest.NewRequest("GET", "/api/info", nil)
+	r.RemoteAddr = "100.70.1.2:51000" // another device on the Tailscale network, not paired
+	w := httptest.NewRecorder()
+	c.ServeHTTP(w, r)
+	if w.Code != http.StatusUnauthorized || strings.Contains(w.Body.String(), h.Tailnet) || w.Header().Get(tailnetHeader) != "" {
+		t.Errorf("a stranger was told the Tailscale address: %d %s", w.Code, w.Body)
 	}
 }

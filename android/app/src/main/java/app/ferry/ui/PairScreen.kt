@@ -77,6 +77,7 @@ fun PairScreen(lib: Library) {
     val computers by lib.computers.collectAsStateWithLifecycle()
     val current by lib.computer.collectAsStateWithLifecycle()
     val notice by lib.notice.collectAsStateWithLifecycle()
+    val joining by lib.joining.collectAsStateWithLifecycle()
     var typing by remember { mutableStateOf<Discovery.Found?>(null) }
     var problem by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
@@ -94,13 +95,16 @@ fun PairScreen(lib: Library) {
         val text = result.contents ?: return@rememberLauncherForActivityResult
         val link = Pairing.parse(text)
         if (link == null) {
-            problem = "That's not Ferry's code"
+            // The computer's page also shows a code for its own Wi-Fi, for the phone's camera.
+            problem = if (text.trim().startsWith("WIFI:", ignoreCase = true)) "That's the code for your computer's Wi-Fi. Scan Ferry's code instead: it joins the Wi-Fi too."
+            else "That's not Ferry's code"
             return@rememberLauncherForActivityResult
         }
         busy = true
         scope.launch {
             try {
-                lib.pair(FerryApi.pair(context, link, lib.previousKey(link.host, link.port)))
+                // Over the computer's own Wi-Fi, when its code has one and it can't be reached otherwise.
+                lib.pair(link)
             } catch (e: Exception) {
                 problem = e.message
             }
@@ -129,7 +133,7 @@ fun PairScreen(lib: Library) {
                         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(c.danger.copy(alpha = 0.09f)).padding(14.dp))
                 }
             }
-            InkButton(if (busy) "Connecting…" else "Scan the code", icon = Icons.Outlined.QrCodeScanner, enabled = !busy) {
+            InkButton(joining?.let { "Joining $it…" } ?: if (busy) "Connecting…" else "Scan the code", icon = Icons.Outlined.QrCodeScanner, enabled = !busy) {
                 problem = null
                 scanner.launch(ScanOptions().setDesiredBarcodeFormats(ScanOptions.QR_CODE).setPrompt("Point the camera at the code on your computer's screen")
                     .setBeepEnabled(false).setOrientationLocked(false))

@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import Network
 import Security
 import UniformTypeIdentifiers
 
@@ -13,21 +14,33 @@ nonisolated struct FerryComputer: Codable, Equatable, Identifiable, Sendable {
     var tlsPort: Int?     // the secure address
     var ca: Data?         // DER
     var token: String
+    var tailnet: String? = nil // its Tailscale address, as it last said: how it's reached away from home
 
     /// Everything goes over the secure address whenever the computer has one.
     var secure: Bool { tlsPort != nil && ca != nil }
 
+    /// Its secure address, or this iPhone's own relay to it while it's a Mac nearby with no network in
+    /// common (PeerRelay); the plain address for computers without one.
     var base: URL {
         var c = URLComponents()
         c.scheme = secure ? "https" : "http"
-        c.host = host
-        c.port = secure ? tlsPort : port
+        if secure, let relay = PeerRelay.shared.port(for: id) {
+            c.host = "127.0.0.1"
+            c.port = Int(relay)
+        } else {
+            c.host = host
+            c.port = secure ? tlsPort : port
+        }
         return c.url!
     }
 
-    /// Lets this phone trust the computer's secure address.
+    /// Lets this phone trust the computer's secure address (and its relay, while there is one).
     func register() {
-        if let ca, let tlsPort { TrustStore.shared.trust(ca, host: host, port: tlsPort) }
+        guard let ca, let tlsPort else { return }
+        // A computer's authority can only vouch for home-network addresses, so its certificate never lists
+        // the Tailscale one: that address is checked by a name the certificate always has.
+        TrustStore.shared.trust(ca, host: host, port: tlsPort, named: host == tailnet ? "localhost" : nil)
+        if let relay = PeerRelay.shared.port(for: id) { TrustStore.shared.trust(ca, host: "127.0.0.1", port: Int(relay)) }
     }
 }
 
@@ -61,6 +74,8 @@ nonisolated struct FerryInfo: Codable, Sendable {
     let host: String
     /// What the computer calls its bin ("Trash", "Recycle Bin"); older servers don't say.
     var trash: String?
+    /// Its Tailscale address, when it's on Tailscale.
+    var tailnet: String?
 }
 
 nonisolated enum FerryError: LocalizedError {
@@ -71,7 +86,7 @@ nonisolated enum FerryError: LocalizedError {
         case .wrongCode: "That code doesn't match. Check the one on your computer."
         case .removed: "This iPhone was removed from the computer's list."
         case .notThisComputer: "That isn't the computer whose code you scanned. Check you're on the same Wi-Fi as it, and scan again."
-        case .unreachable: "Can't reach your computer. Is Ferry running there, and is this iPhone on the same Wi-Fi?"
+        case .unreachable: "Can't reach your computer. Is Ferry running there, and is this iPhone on the same Wi-Fi (or near your Mac)?"
         case let .server(status, text): text.isEmpty ? "Your computer said no (\(status))." : text
         }
     }
@@ -121,13 +136,15 @@ nonisolated enum Pairing {
         SecItemAdd(add as CFDictionary, nil)
     }
 
-    /// What the QR code on Ferry's computer page carries: http://<computer>:7070/?k=<code>&f=<fingerprint>&s=<secure port>.
+    /// What the QR code on Ferry's computer page carries: http://<computer>:7070/?k=<code>&f=<fingerprint>&s=<secure port>,
+    /// and while the computer runs its own Wi-Fi (Windows, Linux), that network's name (w).
     struct Scanned: Equatable, Sendable {
         var host: String
         var port: Int
         var code: String
         var fingerprint: String?
         var tlsPort: Int?
+        var network: String? = nil
     }
 
     static func parse(_ text: String) -> Scanned? {
@@ -136,7 +153,8 @@ nonisolated enum Pairing {
               let code = parts.queryItems?.first(where: { $0.name == "k" })?.value, code.count >= 6 else { return nil }
         let item = { (name: String) in parts.queryItems?.first { $0.name == name }?.value }
         return Scanned(host: host, port: parts.port ?? (parts.scheme == "https" ? 443 : 80), code: normalise(code),
-                       fingerprint: item("f"), tlsPort: item("s").flatMap(Int.init))
+                       fingerprint: item("f"), tlsPort: item("s").flatMap(Int.init),
+                       network: item("w").map { $0.replacingOccurrences(of: "+", with: " ") })
     }
 
     static func normalise(_ code: String) -> String {
@@ -158,11 +176,12 @@ nonisolated enum Pairing {
 nonisolated final class TrustStore: NSObject, URLSessionDelegate, @unchecked Sendable {
     static let shared = TrustStore()
     private let lock = NSLock()
-    private var anchors: [String: SecCertificate] = [:]
+    private var anchors: [String: (certificate: SecCertificate, name: String?)] = [:]
 
-    func trust(_ ca: Data, host: String, port: Int) {
+    /// `name` is what to check the certificate for, when that isn't the address itself.
+    func trust(_ ca: Data, host: String, port: Int, named name: String? = nil) {
         guard let cert = SecCertificateCreateWithData(nil, ca as CFData) else { return }
-        lock.withLock { anchors["\(host.lowercased()):\(port)"] = cert }
+        lock.withLock { anchors["\(host.lowercased()):\(port)"] = (cert, name) }
     }
 
     /// Accepts a computer's secure address only with a certificate from its own authority.
@@ -174,7 +193,8 @@ nonisolated final class TrustStore: NSObject, URLSessionDelegate, @unchecked Sen
         guard let anchor = lock.withLock({ anchors["\(space.host.lowercased()):\(space.port)"] }) else {
             return (.performDefaultHandling, nil)
         }
-        SecTrustSetAnchorCertificates(trust, [anchor] as CFArray)
+        if let name = anchor.name { SecTrustSetPolicies(trust, SecPolicyCreateSSL(true, name as CFString)) }
+        SecTrustSetAnchorCertificates(trust, [anchor.certificate] as CFArray)
         SecTrustSetAnchorCertificatesOnly(trust, true)
         guard SecTrustEvaluateWithError(trust, nil) else { return (.cancelAuthenticationChallenge, nil) }
         return (.useCredential, URLCredential(trust: trust))
@@ -351,9 +371,72 @@ nonisolated struct FerryAPI: Sendable {
 
     /// Pairs with what the QR code carries. With a fingerprint in it, the phone fetches the computer's
     /// certificate authority, checks it's the one in the code, and sends the code only over the secure address.
+    /// A Mac the network doesn't reach is looked for nearby, over Apple's peer-to-peer Wi-Fi.
     static func pair(_ scanned: Pairing.Scanned, device: String, kind: String, previous: String? = nil) async throws -> FerryComputer {
-        try await pair(host: scanned.host, port: scanned.port, tlsPort: scanned.tlsPort, fingerprint: scanned.fingerprint,
-                       code: scanned.code, device: device, kind: kind, previous: previous)
+        do {
+            return try await pair(host: scanned.host, port: scanned.port, tlsPort: scanned.tlsPort, fingerprint: scanned.fingerprint,
+                                  code: scanned.code, device: device, kind: kind, previous: previous)
+        } catch FerryError.unreachable {
+            guard let fingerprint = scanned.fingerprint, scanned.tlsPort != nil else { throw FerryError.unreachable }
+            return try await pairNearby(scanned, fingerprint: fingerprint, device: device, kind: kind, previous: previous)
+        }
+    }
+
+    /// Pairs with a Mac nearby over Apple's peer-to-peer Wi-Fi, where it announces its secure address
+    /// (_ferrys._tcp) with the fingerprint the code carries. Only the secure address is there, so the
+    /// authority comes from the TLS handshake itself, trusted only if it's the one in the code; the code
+    /// then goes over that connection, as on a network.
+    private static func pairNearby(_ scanned: Pairing.Scanned, fingerprint: String, device: String, kind: String,
+                                   previous: String?) async throws -> FerryComputer {
+        guard let found = await Nearby.find("_ferrys._tcp", peerToPeer: true, timeout: 8, matching: { $0["fp"] == fingerprint }) else {
+            throw FerryError.unreachable
+        }
+        return try await pair(through: found.endpoint, over: found.peerLink, scanned, fingerprint: fingerprint, device: device,
+                              kind: kind, previous: previous)
+    }
+
+    /// Pairs through a relay to the secure address at `endpoint` (over the peer-to-peer link `link`; see pairNearby).
+    static func pair(through endpoint: NWEndpoint, over link: NWInterface? = nil, _ scanned: Pairing.Scanned, fingerprint: String,
+                     device: String, kind: String, previous: String?) async throws -> FerryComputer {
+        let key = "pairing-" + fingerprint
+        guard let relay = try? await PeerRelay.shared.start(key, to: endpoint, over: link) else { throw FerryError.unreachable }
+        do {
+            let ca = try await authority(relay: Int(relay), fingerprint: fingerprint)
+            var c = try await exchange(host: "127.0.0.1", port: scanned.port, secure: (Int(relay), ca), code: scanned.code,
+                                       device: device, kind: kind, previous: previous)
+            // Saved by its real name and secure port; this relay carries on as the computer's own.
+            c.host = scanned.host
+            if c.tlsPort == Int(relay) { c.tlsPort = scanned.tlsPort }
+            PeerRelay.shared.rename(key, to: c.id)
+            c.register()
+            return c
+        } catch {
+            PeerRelay.shared.stop(key)
+            throw error
+        }
+    }
+
+    /// The certificate authority a computer presents in its TLS handshake through a relay, if it's the one
+    /// with `fingerprint`.
+    private static func authority(relay: Int, fingerprint: String) async throws -> Data {
+        let pin = FingerprintPin(fingerprint)
+        let session = URLSession(configuration: .ephemeral, delegate: pin, delegateQueue: nil)
+        defer { session.finishTasksAndInvalidate() }
+        var r = URLRequest(url: URL(string: "https://127.0.0.1:\(relay)/ferry.cer")!)
+        r.timeoutInterval = 15
+        do {
+            let (data, response) = try await session.data(for: r)
+            guard (response as? HTTPURLResponse)?.statusCode == 200, Pairing.fingerprint(data) == fingerprint else {
+                throw FerryError.notThisComputer
+            }
+            return data
+        } catch let e as FerryError {
+            throw e
+        } catch let e as URLError where e.code == .cancelled || e.code == .serverCertificateUntrusted {
+            throw FerryError.notThisComputer
+        } catch {
+            throw FerryError.unreachable
+        }
     }
 
     /// Pairs with a computer at host:port. With a secure port, the code goes only over it, to the certificate
@@ -439,6 +522,27 @@ nonisolated struct FerryAPI: Sendable {
         let ca = reply.ca.flatMap { Data(base64Encoded: $0) } ?? secure?.ca
         return FerryComputer(id: reply.id, name: reply.name, host: host, port: port, tlsPort: reply.tlsPort ?? secure?.port,
                              ca: ca, token: reply.token)
+    }
+}
+
+/// Trusts a TLS connection only if its certificate chain holds the authority with this fingerprint (the
+/// one in the QR code), for pairing before the authority is known.
+nonisolated final class FingerprintPin: NSObject, URLSessionDelegate, @unchecked Sendable {
+    let fingerprint: String
+    init(_ fingerprint: String) { self.fingerprint = fingerprint }
+
+    func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge) async
+        -> (URLSession.AuthChallengeDisposition, URLCredential?) {
+        guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+              let trust = challenge.protectionSpace.serverTrust,
+              let chain = SecTrustCopyCertificateChain(trust) as? [SecCertificate],
+              let anchor = chain.first(where: { Pairing.fingerprint(SecCertificateCopyData($0) as Data) == fingerprint }) else {
+            return (.cancelAuthenticationChallenge, nil)
+        }
+        SecTrustSetAnchorCertificates(trust, [anchor] as CFArray)
+        SecTrustSetAnchorCertificatesOnly(trust, true)
+        guard SecTrustEvaluateWithError(trust, nil) else { return (.cancelAuthenticationChallenge, nil) }
+        return (.useCredential, URLCredential(trust: trust))
     }
 }
 

@@ -74,6 +74,9 @@ class Library(app: Application) : AndroidViewModel(app) {
     val status: StateFlow<Status> = _status.asStateFlow()
     private val _uploads = MutableStateFlow<List<Upload>>(emptyList())
     val uploads: StateFlow<List<Upload>> = _uploads.asStateFlow()
+    /** The name of a computer's own Wi-Fi this phone is joining (while Android asks). */
+    private val _joining = MutableStateFlow<String?>(null)
+    val joining: StateFlow<String?> = _joining.asStateFlow()
     val toast = MutableStateFlow<String?>(null)
 
     var api: FerryApi? = null
@@ -97,6 +100,55 @@ class Library(app: Application) : AndroidViewModel(app) {
         show(c)
     }
 
+    /**
+     * Pairs from a scanned QR code. While a computer's own Wi-Fi is on, its code carries that Wi-Fi's name
+     * and password: when the computer can't be reached otherwise, this phone joins that (Android asks
+     * first) and pairs over it. A computer paired over its own Wi-Fi keeps it, to join again later.
+     */
+    suspend fun pair(link: QrLink) {
+        val previous = previousKey(link.host, link.port)
+        val ssid = link.ssid
+        if (ssid == null) {
+            pair(FerryApi.pair(context, link, previous))
+            return
+        }
+        val c = if (Nearby.opens(link.host, link.port, Reconnect.OPEN_MS)) {
+            FerryApi.pair(context, link, previous)
+        } else {
+            _joining.value = ssid
+            val network = try {
+                DirectWifi.join(context, DirectWifi.PAIRING, ssid, link.password)
+            } finally {
+                _joining.value = null
+            }
+            if (network == null) throw FerryException("This phone didn't join $ssid. Join it in Settings › Wi-Fi, then scan the code again.")
+            try {
+                FerryApi.pair(context, link, previous, network).also { DirectWifi.rename(context, DirectWifi.PAIRING, it.id) }
+            } catch (e: Exception) {
+                DirectWifi.release(context, DirectWifi.PAIRING)
+                throw e
+            }
+        }
+        pair(c.copy(ssid = ssid, password = link.password))
+    }
+
+    /** Joins the shown computer's own Wi-Fi again (Android asks first), then connects over it. */
+    fun joinWifi() {
+        val c = _computer.value ?: return
+        val ssid = c.ssid ?: return
+        if (_joining.value != null) return
+        viewModelScope.launch {
+            _joining.value = ssid
+            val network = try {
+                DirectWifi.join(context, c.id, ssid, c.password)
+            } finally {
+                _joining.value = null
+            }
+            if (network == null) toast.value = "Didn't join $ssid"
+            if (_computer.value?.id == c.id) start()
+        }
+    }
+
     /** Shows another paired computer. */
     fun select(id: String) {
         val c = _computers.value.firstOrNull { it.id == id } ?: return
@@ -110,7 +162,12 @@ class Library(app: Application) : AndroidViewModel(app) {
 
     /** Unpairs a computer on this phone, and tells it; the next one (if any) shows instead. */
     fun forget(id: String) {
-        _computers.value.firstOrNull { it.id == id }?.let { c -> viewModelScope.launch { FerryApi(c).unpairSelf() } }
+        _computers.value.firstOrNull { it.id == id }?.let { c ->
+            viewModelScope.launch {
+                FerryApi(c).unpairSelf()
+                DirectWifi.release(context, id)
+            }
+        }
         val list = _computers.value.filter { it.id != id }
         val next = _computer.value?.takeIf { it.id != id } ?: list.firstOrNull()
         Pairing.save(context, list, next?.id)
@@ -125,6 +182,8 @@ class Library(app: Application) : AndroidViewModel(app) {
     fun stopAdding() { _adding.value = false }
 
     private fun show(c: FerryComputer) {
+        // Another computer's own Wi-Fi isn't needed any more: Android goes back to the network it was on.
+        DirectWifi.releaseAllBut(context, c.id)
         _adding.value = false
         _notice.value = null
         _computer.value = c
@@ -142,27 +201,41 @@ class Library(app: Application) : AndroidViewModel(app) {
     // MARK: Connecting
 
     /**
-     * Keeps the list live: connects over the computer's secure port, follows updates, and retries after a
-     * moment (looking the computer up on the Wi-Fi by its id now and then, in case its address changed).
+     * Keeps the list live: finds the computer (at its address, a new one, or its own Wi-Fi), connects over
+     * its secure port, follows updates, and tries again after a moment. A computer paired without a secure
+     * port is looked up on the Wi-Fi by its id now and then instead, in case its address changed.
      */
     fun start() {
         live?.cancel()
         var c = _computer.value ?: return
         live = viewModelScope.launch {
             var failures = 0
+            var first = true
             while (isActive) {
-                if (_status.value != Status.Connected) _status.value = Status.Connecting
+                // "Connecting…" the first time; after that, what went wrong stays up while Ferry looks again.
+                if (first && _status.value != Status.Connected) _status.value = Status.Connecting
+                first = false
                 try {
                     if (c.token.isEmpty()) c = tradeIn(c) ?: return@launch
-                    val a = FerryApi(c)
-                    trash = a.info().optString("trash", "Trash")
-                    api = a
-                    a.events().collect { list ->
-                        _status.value = Status.Connected
-                        failures = 0
-                        apply(list)
+                    val here = Reconnect.find(c, Probes.of(context, c))
+                    if (here == null) {
+                        _status.value = Status.Offline(Reconnect.nowhere(c))
+                    } else {
+                        // Reached over Tailscale, the address kept for it stays its home one.
+                        val away = here.host == c.tailnet
+                        if (here.host != c.host && !away) c = moved(here)
+                        val a = FerryApi(if (away) here else c)
+                        val info = a.info()
+                        trash = info.optString("trash", "Trash")
+                        info.optString("tailnet").takeIf { it.isNotEmpty() && it != c.tailnet }?.let { c = moved(c.copy(tailnet = it)) }
+                        api = a
+                        a.events().collect { list ->
+                            _status.value = Status.Connected
+                            failures = 0
+                            apply(list)
+                        }
+                        _status.value = Status.Offline("Lost the connection to ${c.name}")
                     }
-                    _status.value = Status.Offline("Lost the connection to ${c.name}")
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: RemovedException) {
@@ -170,7 +243,7 @@ class Library(app: Application) : AndroidViewModel(app) {
                     return@launch
                 } catch (e: Exception) {
                     _status.value = Status.Offline(e.message ?: "Can't reach ${c.name}")
-                    if (c.id.isNotEmpty() && ++failures % 2 == 0) relocate(c)?.let { c = it }
+                    if (!c.secure && c.id.isNotEmpty() && ++failures % 2 == 0) relocate(c)?.let { c = it }
                 }
                 delay(3000)
             }
@@ -194,6 +267,7 @@ class Library(app: Application) : AndroidViewModel(app) {
 
     /** The computer turned this phone down: it's unpaired here too, and the pair screen says why. */
     private fun removed(c: FerryComputer, why: String) {
+        DirectWifi.release(context, c.id)
         val list = _computers.value.filter { it.id != c.id }
         Pairing.save(context, list, null)
         _computers.value = list
@@ -203,15 +277,25 @@ class Library(app: Application) : AndroidViewModel(app) {
         _notice.value = why
     }
 
-    /** Looks for the computer on the Wi-Fi by its id; a new address is kept. */
+    /** Looks for a computer paired without a secure port on the Wi-Fi by its id; a new address is kept. */
     private suspend fun relocate(c: FerryComputer): FerryComputer? {
         val found = Discovery(context).find(c.id) ?: return null
         if (found.host == c.host && found.port == c.port) return null
-        val moved = c.copy(host = found.host, port = found.port, tlsPort = if (found.tlsPort > 0) found.tlsPort else c.tlsPort)
-        _computers.value = _computers.value.map { if (it.id == c.id) moved else it }
-        Pairing.save(context, _computers.value, moved.id)
-        if (_computer.value?.id == c.id) _computer.value = moved
-        return moved
+        return moved(c.copy(host = found.host, port = found.port, tlsPort = if (found.tlsPort > 0) found.tlsPort else c.tlsPort))
+    }
+
+    /** Debug builds: saves another address for the computer shown, as if it had moved since, to watch it found again. */
+    fun pretendMoved(host: String) {
+        val c = _computer.value ?: return
+        moved(c.copy(host = host))
+        start()
+    }
+
+    /** Keeps a computer's new address. */
+    private fun moved(c: FerryComputer): FerryComputer {
+        _computers.value = Pairing.update(context, c)
+        if (_computer.value?.id == c.id) _computer.value = c
+        return c
     }
 
     fun refresh() {
@@ -388,6 +472,8 @@ class Library(app: Application) : AndroidViewModel(app) {
 
     override fun onCleared() {
         live?.cancel()
+        // Ferry is closed: no computer is in use, so this phone goes back to the network it was on.
+        DirectWifi.releaseAllBut(context, null)
     }
 }
 

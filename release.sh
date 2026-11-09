@@ -1,7 +1,8 @@
 #!/bin/zsh
 # Builds everything Ferry offers for download into dist/:
 #   the apps   Ferry-mac.dmg, Ferry-windows-{x64,arm64}.exe, Ferry-linux-{x64,arm64}.{deb,tar.gz}, Ferry-android.apk
-#   the CLI    ferry-cli-{macos,linux,windows}-{arm64,amd64} (the same Ferry, run from a terminal)
+#   the CLI    ferry-cli-{macos,linux,windows}-{arm64,amd64} (the same Ferry, run from a terminal), and
+#              ferry-p2p-macos (Ferry on Apple's peer-to-peer Wi-Fi, which a Mac's Ferry finds beside it)
 # The Linux apps need Docker (they're built on Ubuntu 22.04); the Android app needs JDK 21 and the Android SDK.
 set -e
 cd "${0:A:h}"
@@ -15,8 +16,12 @@ for target in darwin/arm64:macos-arm64 darwin/amd64:macos-amd64 linux/amd64:linu
   GOOS=${platform%/*} GOARCH=${platform#*/} CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o dist/ferry-cli-${target#*:} .
 done
 
+desktop/mac-p2p/build.sh dist/ferry-p2p-macos
+
 echo "• Mac app"
 (cd desktop && $wails build -platform darwin/universal -trimpath -s -clean >/dev/null)
+# Ferry on Apple's peer-to-peer Wi-Fi, beside the app's own program (signed with the app next).
+cp dist/ferry-p2p-macos desktop/build/bin/Ferry.app/Contents/MacOS/ferry-p2p
 # Share › Ferry: the share extension goes inside the app (needs Xcode and XcodeGen).
 desktop/mac-share/build.sh desktop/build/bin/Ferry.app
 stage=$(mktemp -d) && cp -R desktop/build/bin/Ferry.app $stage/ && ln -s /Applications $stage/Applications

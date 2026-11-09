@@ -32,6 +32,7 @@ type Peer struct {
 	ID       string    `json:"id"`
 	Name     string    `json:"name"`
 	Host     string    `json:"host"` // an address
+	Tailnet  string    `json:"tailnet,omitempty"` // its Tailscale address, for when it's nowhere nearby
 	Port     int       `json:"port"`
 	TLSPort  int       `json:"tlsPort"`
 	CA       []byte    `json:"ca"`
@@ -40,8 +41,27 @@ type Peer struct {
 	Paired   time.Time `json:"paired"`
 }
 
+// tailnetHeader tells a paired computer this one's Tailscale address, on the answers it gets.
+const tailnetHeader = "X-Ferry-Tailnet"
+
+// peerToPeerHost is a paired Mac's address while it's reached over Apple's peer-to-peer Wi-Fi (dialPeerToPeer).
+const peerToPeerHost = "peer-to-peer"
+
+// dialPeer opens a connection to address addr of the paired computer id: over the network, or over Apple's
+// peer-to-peer Wi-Fi when that's where it is.
+func dialPeer(ctx context.Context, id, addr string) (net.Conn, error) {
+	if host, _, _ := net.SplitHostPort(addr); host == peerToPeerHost {
+		return dialPeerToPeer(id)
+	}
+	return (&net.Dialer{Timeout: 8 * time.Second}).DialContext(ctx, "tcp", addr)
+}
+
 func (p Peer) base() string {
-	return "https://" + net.JoinHostPort(p.Host, strconv.Itoa(p.TLSPort))
+	return "https://" + urlHostPort(p.Host, p.TLSPort)
+}
+
+func urlHostPort(host string, port int) string {
+	return net.JoinHostPort(strings.ReplaceAll(host, "%", "%25"), strconv.Itoa(port))
 }
 
 // Peers are kept in peers.json in Ferry's data folder (in memory only when path is "").
@@ -139,6 +159,19 @@ func (ps *Peers) setProblem(id, problem string) {
 	ps.problems[id] = problem
 }
 
+// learnedTailnet keeps the Tailscale address a paired computer gave.
+func (ps *Peers) learnedTailnet(id, address string) {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	for i := range ps.list {
+		if ps.list[i].ID == id && ps.list[i].Tailnet != address {
+			ps.list[i].Tailnet = address
+			ps.saveLocked()
+			return
+		}
+	}
+}
+
 func (ps *Peers) problem(id string) string {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
@@ -166,23 +199,45 @@ func (ps *Peers) client(p Peer) *http.Client {
 	if ps.clients == nil {
 		ps.clients = map[string]*http.Client{}
 	}
-	c := pinnedClient(p.CA)
+	c := pinnedClient(p.CA, p.ID)
 	ps.clients[p.ID] = c
 	return c
 }
 
-func pinnedClient(caDER []byte) *http.Client {
+func pinnedClient(caDER []byte, id string) *http.Client {
 	pool := x509.NewCertPool()
 	if ca, err := x509.ParseCertificate(caDER); err == nil {
 		pool.AddCert(ca)
 	}
 	return &http.Client{Transport: &http.Transport{
-		TLSClientConfig:       &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12},
-		DialContext:           (&net.Dialer{Timeout: 8 * time.Second}).DialContext,
+		TLSClientConfig:       pinnedTLS(pool),
+		DialContext:           func(ctx context.Context, _, addr string) (net.Conn, error) { return dialPeer(ctx, id, addr) },
 		TLSHandshakeTimeout:   8 * time.Second,
 		ResponseHeaderTimeout: 2 * time.Minute,
 		IdleConnTimeout:       90 * time.Second,
 	}}
+}
+
+// pinnedTLS trusts one computer's own certificate authority and nothing else, which is what proves
+// it's that computer (its key never leaves it). So the names in its certificate aren't checked: it
+// may be reached at an address they don't list, over peer-to-peer Wi-Fi or just after it moved.
+func pinnedTLS(pool *x509.CertPool) *tls.Config {
+	return &tls.Config{
+		MinVersion:         tls.VersionTLS12,
+		InsecureSkipVerify: true, // replaced by VerifyConnection: the chain must end at pool's authority
+		VerifyConnection: func(cs tls.ConnectionState) error {
+			if len(cs.PeerCertificates) == 0 {
+				return errors.New("no certificate")
+			}
+			between := x509.NewCertPool()
+			for _, c := range cs.PeerCertificates[1:] {
+				between.AddCert(c)
+			}
+			_, err := cs.PeerCertificates[0].Verify(x509.VerifyOptions{Roots: pool, Intermediates: between,
+				KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}})
+			return err
+		},
+	}
 }
 
 // localKind is what this computer is, as other devices list it.
@@ -300,10 +355,10 @@ func (s *Server) pairComputer(w http.ResponseWriter, r *http.Request) {
 		offer["previous"] = old.Token // replace this computer's old entry there
 	}
 	body, _ := json.Marshal(offer)
-	call, _ := http.NewRequestWithContext(ctx, http.MethodPost, "https://"+net.JoinHostPort(target.Host, strconv.Itoa(tlsPort))+"/api/pair", bytes.NewReader(body))
+	call, _ := http.NewRequestWithContext(ctx, http.MethodPost, "https://"+urlHostPort(target.Host, tlsPort)+"/api/pair", bytes.NewReader(body))
 	call.Header.Set("Content-Type", "application/json")
 	call.Header.Set("X-Ferry", "1")
-	resp, err := pinnedClient(ca).Do(call)
+	resp, err := pinnedClient(ca, "").Do(call)
 	if err != nil {
 		log.Printf("pairing with %s: %v", target.Host, err)
 		s.devices.Remove(dev.ID)
@@ -344,11 +399,16 @@ func (s *Server) acceptComputer(r *http.Request, dev Device, offer *computerOffe
 	if err != nil {
 		return
 	}
-	// Reach it the way it reached us, when that's on the local network.
+	// Reach it the way it reached us, when that's on the local network or peer-to-peer link.
 	host := offer.Host
 	if h, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
-		if ip := net.ParseIP(h); ip != nil && (ip.IsPrivate() || ip.IsLoopback()) {
-			host = ip.String()
+		raw, zone, _ := strings.Cut(h, "%")
+		if ip := net.ParseIP(raw); ip != nil && (ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLoopback()) {
+			if zone != "" {
+				host = ip.String() + "%" + zone
+			} else {
+				host = ip.String()
+			}
 		}
 	}
 	if old, ok := s.peers.Get(offer.ID); ok && old.DeviceID != dev.ID {
@@ -387,7 +447,7 @@ func (s *Server) forgetComputer(w http.ResponseWriter, r *http.Request) {
 		req, _ := http.NewRequestWithContext(ctx, http.MethodDelete, p.base()+"/api/devices/self", nil)
 		req.Header.Set("Authorization", "Ferry "+p.Token)
 		req.Header.Set("X-Ferry", "1")
-		if resp, err := pinnedClient(p.CA).Do(req); err == nil {
+		if resp, err := pinnedClient(p.CA, p.ID).Do(req); err == nil {
 			resp.Body.Close()
 		}
 	}()
@@ -400,7 +460,33 @@ func (s *Server) forgetComputer(w http.ResponseWriter, r *http.Request) {
 // MARK: Sending, looking, fetching
 
 // call makes a request to a paired computer with this computer's key, noting if it refuses it.
+// When it doesn't answer where it was, call looks for it (relocate) and asks again there.
 func (s *Server) call(ctx context.Context, p Peer, method, path string, body io.Reader, size int64) (*http.Response, error) {
+	if n, ok := s.finder.byID(p.ID); ok && n.Host != "" && n.Host != p.Host {
+		s.peers.moved(p.ID, n.Host)
+		p.Host = n.Host
+	}
+	// A file being sent can only go once, so first make sure the computer is there.
+	if body != nil && reach(ctx, p, p.Host) != nil {
+		if moved, ok := s.relocate(ctx, p); ok {
+			p = moved
+		}
+	}
+	resp, err := s.ask(ctx, p, method, path, body, size)
+	if err == nil {
+		if t := resp.Header.Get(tailnetHeader); t != "" && t != p.Tailnet {
+			s.peers.learnedTailnet(p.ID, t)
+		}
+	}
+	if err != nil && body == nil && !errors.Is(err, errRemoved) && ctx.Err() == nil {
+		if moved, ok := s.relocate(ctx, p); ok {
+			return s.ask(ctx, moved, method, path, nil, 0)
+		}
+	}
+	return resp, err
+}
+
+func (s *Server) ask(ctx context.Context, p Peer, method, path string, body io.Reader, size int64) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, method, p.base()+path, body)
 	if err != nil {
 		return nil, err
@@ -421,6 +507,95 @@ func (s *Server) call(ctx context.Context, p Peer, method, path string, body io.
 		return nil, errRemoved
 	}
 	return resp, err
+}
+
+// relocate looks for a paired computer that isn't where it was: where Bonjour last heard it, at the
+// address a computer has when it runs the direct Wi-Fi this one is on, and (Mac to Mac, with no network
+// in common) over Apple's peer-to-peer Wi-Fi. Each place is tried at once, by an encrypted
+// handshake that only that computer can complete (its own certificate authority), before anything
+// is sent there. A computer is looked for at most every 20 seconds.
+func (s *Server) relocate(ctx context.Context, p Peer) (Peer, bool) {
+	if last, ok := s.lookedFor.Load(p.ID); ok && time.Since(last.(time.Time)) < 20*time.Second {
+		return p, false
+	}
+	s.lookedFor.Store(p.ID, time.Now())
+	ctx, cancel := context.WithTimeout(ctx, 14*time.Second)
+	defer cancel()
+
+	found := make(chan string, 1)
+	var wg sync.WaitGroup
+	try := func(host string) {
+		if host == "" || host == p.Host {
+			return
+		}
+		if reach(ctx, p, host) == nil {
+			select {
+			case found <- host:
+			default:
+			}
+		}
+	}
+	places := gateways(s.h().IPs)
+	if n, ok := s.finder.byID(p.ID); ok {
+		places = append(places, n.Host)
+	}
+	if p2pHelper() != "" {
+		places = append(places, peerToPeerHost)
+	}
+	places = append(places, p.Tailnet)
+	for _, host := range places {
+		wg.Add(1)
+		go func() { defer wg.Done(); try(host) }()
+	}
+	go func() { wg.Wait(); close(found) }()
+
+	host, ok := <-found
+	if !ok {
+		return p, false
+	}
+	s.peers.moved(p.ID, host)
+	p.Host = host
+	s.computersChanged()
+	return p, true
+}
+
+// reach checks that the computer p is at host: its secure address there completes an encrypted
+// handshake with p's own certificate authority. (Over peer-to-peer Wi-Fi, finding it takes longer.)
+func reach(ctx context.Context, p Peer, host string) error {
+	wait := 3 * time.Second
+	if host == peerToPeerHost {
+		wait = 12 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(ctx, wait)
+	defer cancel()
+	pool := x509.NewCertPool()
+	if ca, err := x509.ParseCertificate(p.CA); err == nil {
+		pool.AddCert(ca)
+	}
+	conn, err := dialPeer(ctx, p.ID, net.JoinHostPort(host, strconv.Itoa(p.TLSPort)))
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	return tls.Client(conn, pinnedTLS(pool)).HandshakeContext(ctx)
+}
+
+// gateways: when this computer is on another computer's direct Wi-Fi (Windows' or Linux's own
+// hotspot, or a Mac's Internet Sharing), that computer is the network's gateway.
+func gateways(own []net.IP) []string {
+	var out []string
+	for _, ip := range own {
+		v4 := ip.To4()
+		if v4 == nil {
+			continue
+		}
+		if isHotspotAddr(v4) || v4[0] == 192 && v4[1] == 168 && v4[2] == 2 {
+			if gw := fmt.Sprintf("%d.%d.%d.1", v4[0], v4[1], v4[2]); gw != v4.String() && !slices.Contains(out, gw) {
+				out = append(out, gw)
+			}
+		}
+	}
+	return out
 }
 
 var errRemoved = errors.New("removed")
@@ -531,7 +706,7 @@ func (s *Server) fetchFromComputer(w http.ResponseWriter, r *http.Request) {
 // fetchAuthority gets another computer's certificate authority from its plain address, with its
 // secure port (which it says in a header).
 func fetchAuthority(ctx context.Context, host string, port int) ([]byte, int, error) {
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+net.JoinHostPort(host, strconv.Itoa(port))+"/ferry.cer", nil)
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+urlHostPort(host, port)+"/ferry.cer", nil)
 	resp, err := (&http.Client{Timeout: 8 * time.Second}).Do(req)
 	if err != nil {
 		return nil, 0, err

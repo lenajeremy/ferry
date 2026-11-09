@@ -119,6 +119,24 @@ Each computer's page (in the app or a browser) has **Other computers**: the comp
 
 Computers talk to each other only over their secure addresses, each trusting just the other's certificate authority (checked against the fingerprint it announces, or fetched from it when typed by address). On a Mac they're found with `dns-sd`; on Windows and Linux, Ferry's own announcer listens for the others' announcements and asks the network every minute.
 
+## With no Wi-Fi network in common
+
+Ferry needs no router and no internet: devices only have to reach each other.
+
+- **iPhone and Mac, nearby:** the Ferry app reaches a Mac over Apple's peer-to-peer Wi-Fi (what AirDrop uses), with no network in common. The iPhone's Wi-Fi has to be switched on in Settings (it needn't join a network; turning Wi-Fi off from Control Center blocks it). On the Mac this is `ferry-p2p` (`desktop/mac-p2p/`, Swift), which Ferry starts when it's beside Ferry's own program: it is in the Mac app, and Homebrew installs it. Only Apple's Network framework can take connections on that link, so `ferry-p2p` listens and announces Ferry's secure address there (`_ferrys._tcp`) and hands each connection to Ferry over a Unix socket in Ferry's data folder. Those count as another device, never as the Mac itself: they need a paired phone's key. In the app (`ios/Shared/Nearby.swift`), URLSession can't use that link, so a relay on the iPhone's own loopback carries its connections over it, still encrypted end to end.
+- **Windows and Linux:** **Start direct Wi-Fi** on Ferry's page makes a Wi-Fi network of the computer's own, with no internet (`server/hotspot_*.go`: Wi-Fi Direct on Windows, NetworkManager on Linux). Phones join it with the Wi-Fi code the page shows, then scan Ferry's code. Most Linux laptops' Wi-Fi leaves its network while it's on, and the page says so first. On Windows the new network counts as public, so if phones can't reach Ferry there, allow it on public networks in the firewall.
+- **Any phone and any computer:** turn on the phone's hotspot and join it from the computer. Ferry uses no mobile data for this.
+
+The apps find a paired computer that moved by themselves: where Bonjour hears it, at its own direct Wi-Fi, or (iPhone and Mac) nearby. They only ever do it for computers paired securely, and only by an encrypted handshake that just that computer can complete, so a phone's key never goes anywhere else.
+
+## Away from home
+
+With [Tailscale](https://tailscale.com) on both the computer and the phone, signed in to the same account, Ferry works from anywhere, with no server of Ferry's and nothing to set up on your router. The computer has to be on, awake and online.
+
+The computer tells its paired devices its Tailscale address whenever they connect at home, and they keep it. When the home address doesn't answer, the apps try that one (`Reconnect` in each app; computers do the same in `server/peers.go`). The address saved for the computer stays its home one, and the home network is tried first, so at home files still go the fastest way. A browser can use it too: Ferry's page shows `http://<Tailscale address>:7070` when Tailscale is on.
+
+Devices still need to be paired: being on the same Tailscale account gets nobody into Ferry. Ferry's certificate authority can only vouch for home-network addresses (that's what makes it safe to trust, `server/certs.go`), so a certificate never lists a Tailscale address. The apps check it against `localhost`, a name every Ferry certificate has, and only at the address that computer gave them, and still only trust that computer's own authority.
+
 ## Saving to Photos on the iPhone, in Safari
 
 The app saves to Photos in one tap. Without it, Safari saves a photo by pressing and holding it in Ferry's viewer. For one-tap saving in Safari too, Ferry has a secure page (Safari only hands files to the share sheet, and lets a page copy images, over a secure connection). The phone page walks you through it (the **Save straight to Photos** card): download Ferry's certificate, install it in Settings, turn it on in Settings › General › About › Certificate Trust Settings, then use the secure page (port 7071) from then on.
@@ -187,7 +205,9 @@ Ferry itself is Go, standard library only: the `server` package, with the page e
 | `server/thumbs.go`, `thumbs_portable.go` | Thumbnails: `sips` and Quick Look on a Mac; Go (JPEG, PNG, GIF, turned upright) and `ffmpeg` elsewhere |
 | `server/mdns.go`, `server/sockopt_*.go` | Ferry's own Bonjour announcer for Windows and Linux (macOS uses its `dns-sd`) |
 | `server/devices.go`, `server/pairing.go` | Paired devices and their tokens; pairing the apps, removing devices, new codes |
-| `server/peers.go`, `server/discovery.go` | Other computers: finding them, pairing both ways, sending, their files |
+| `server/peers.go`, `server/discovery.go` | Other computers: finding them, pairing both ways, sending, their files, finding one that moved |
+| `server/p2p_darwin.go`, `desktop/mac-p2p/` | Apple's peer-to-peer Wi-Fi on a Mac: `ferry-p2p` and the private socket it hands connections over |
+| `server/hotspot*.go` | Direct Wi-Fi: a network of the computer's own on Windows and Linux |
 | `server/certs.go` | Ferry's name-constrained certificate authority and the secure page's certificate |
 | `server/host.go` | The computer's name, `.local` name and network addresses |
 | `qr/` | A QR code encoder (byte mode, level M, versions 1–10) |

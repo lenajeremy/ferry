@@ -105,17 +105,30 @@ final class Library {
 
     // MARK: Connecting
 
-    /// Keeps the list live: connects, follows the computer's updates, and tries again a moment after
-    /// losing it. A computer that has removed this phone is forgotten.
+    /// Keeps the list live: finds the computer (where it was, where it went, or nearby), connects,
+    /// follows its updates, and tries again a moment after losing it. A computer that has removed this
+    /// phone is forgotten.
     func start() {
         live?.cancel()
-        guard let computer else { return }
+        guard computer != nil else { return }
         live = Task {
-            while !Task.isCancelled {
-                if status != .connected { status = .connecting }
+            var first = true
+            while !Task.isCancelled, let paired = self.computer {
+                // "Connecting…" the first time; after that, what went wrong stays up while Ferry looks again.
+                if first, status != .connected { status = .connecting }
+                first = false
+                guard let computer = await Reconnect.find(paired) else {
+                    if Task.isCancelled { return }
+                    status = .offline(Reconnect.nowhere(paired, onWiFi: Nearby.onWiFi))
+                    try? await Task.sleep(for: .seconds(3))
+                    continue
+                }
+                if computer.host != paired.host, computer.host != paired.tailnet { moved(computer) }
                 do {
                     let api = FerryAPI(computer)
-                    trash = try await api.info().trash ?? "Trash"
+                    let info = try await api.info()
+                    trash = info.trash ?? "Trash"
+                    if let tailnet = info.tailnet, tailnet != paired.tailnet { learnedTailnet(tailnet, for: paired.id) }
                     self.api = api
                     for try await list in api.events() {
                         status = .connected
@@ -132,6 +145,20 @@ final class Library {
                 try? await Task.sleep(for: .seconds(3))
             }
         }
+    }
+
+    /// Remembers a computer at the address it was found at (a PC's new one, or its own direct Wi-Fi's).
+    private func moved(_ c: FerryComputer) {
+        guard let i = saved.computers.firstIndex(where: { $0.id == c.id }) else { return }
+        saved.computers[i].host = c.host
+        Pairing.save(saved)
+    }
+
+    /// Remembers a computer's Tailscale address, to try when this iPhone is away from home.
+    private func learnedTailnet(_ address: String, for id: String) {
+        guard let i = saved.computers.firstIndex(where: { $0.id == id }) else { return }
+        saved.computers[i].tailnet = address
+        Pairing.save(saved)
     }
 
     private func removed(_ c: FerryComputer) {

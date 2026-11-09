@@ -54,6 +54,7 @@ import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.SwapVert
+import androidx.compose.material.icons.outlined.Wifi
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -111,6 +112,7 @@ fun LibraryScreen(lib: Library, openFirst: String? = null, selectFirst: Int = 0)
     val loaded by lib.loaded.collectAsStateWithLifecycle()
     val status by lib.status.collectAsStateWithLifecycle()
     val uploads by lib.uploads.collectAsStateWithLifecycle()
+    val joining by lib.joining.collectAsStateWithLifecycle()
     var viewing by remember { mutableStateOf<String?>(null) }
     var selecting by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf(setOf<String>()) }
@@ -175,6 +177,13 @@ fun LibraryScreen(lib: Library, openFirst: String? = null, selectFirst: Int = 0)
                                     }
                                     Text(statusLine, fontSize = 14.sp, color = c.ink2, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                                     Icon(Icons.Outlined.ExpandMore, null, tint = c.ink3, modifier = Modifier.size(18.dp))
+                                }
+                            }
+                            // Out of reach, but paired over its own Wi-Fi: join that again.
+                            val ssid = computer?.ssid
+                            if (!selecting && ssid != null && status is Status.Offline) {
+                                SoftButton(joining?.let { "Joining $it…" } ?: "Join $ssid", Icons.Outlined.Wifi, Modifier.padding(top = 14.dp).fillMaxWidth()) {
+                                    lib.joinWifi()
                                 }
                             }
                             if (!selecting) {

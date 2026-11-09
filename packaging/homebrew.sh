@@ -28,6 +28,11 @@ class Ferry < Formula
       url "$base/ferry-cli-macos-amd64"
       sha256 "$(sum ferry-cli-macos-amd64)"
     end
+    # Ferry on Apple's peer-to-peer Wi-Fi: iPhones nearby reach this Mac with no network in common.
+    resource "p2p" do
+      url "$base/ferry-p2p-macos"
+      sha256 "$(sum ferry-p2p-macos)"
+    end
   end
   on_linux do
     on_arm do
@@ -42,6 +47,7 @@ class Ferry < Formula
 
   def install
     bin.install Dir["ferry-cli-*"].first => "ferry"
+    resource("p2p").stage { bin.install "ferry-p2p-macos" => "ferry-p2p" } if OS.mac?
   end
 
   service do

@@ -37,9 +37,10 @@ targets:
           - UIInterfaceOrientationPortrait
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
-        NSLocalNetworkUsageDescription: Ferry finds your computers on this Wi-Fi and sends files to them directly.
+        NSLocalNetworkUsageDescription: Ferry finds your computers on this Wi-Fi, or a Mac nearby, and sends files to them directly.
         NSBonjourServices:
           - _ferry._tcp
+          - _ferrys._tcp
         NSCameraUsageDescription: Ferry uses the camera to scan the code on your computer's screen.
         NSPhotoLibraryAddUsageDescription: Ferry saves the photos and videos you choose to your library.
         ITSAppUsesNonExemptEncryption: false
@@ -71,7 +72,10 @@ targets:
         FerryKeychainGroup: $(AppIdentifierPrefix)app.ferry.shared
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
-        NSLocalNetworkUsageDescription: Ferry sends what you share to your computer on this Wi-Fi.
+        NSLocalNetworkUsageDescription: Ferry sends what you share to your computer on this Wi-Fi, or to a Mac nearby.
+        NSBonjourServices:
+          - _ferry._tcp
+          - _ferrys._tcp
         NSExtension:
           NSExtensionPointIdentifier: com.apple.share-services
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
@@ -103,6 +107,9 @@ targets:
       base:
         GENERATE_INFOPLIST_FILE: YES
         PRODUCT_BUNDLE_IDENTIFIER: app.ferry.ios.tests
+    scheme:
+      testTargets:
+        - FerryTests
   FerryUITests:
     type: bundle.ui-testing
     platform: iOS

@@ -9,6 +9,10 @@ struct FerryTests {
         #expect(s.host == "Ferry-Test-MacBook-Pro4.local" && s.port == 7070 && s.code == "k7m2q9xa")
         #expect(s.fingerprint == "gZ_x2YJh2S2DD_40s0j8a8" && s.tlsPort == 7071)
         // Codes from before the fingerprint still pair (over the plain address).
+        // While a PC runs its own Wi-Fi, the code names it.
+        let direct = try #require(Pairing.parse("http://192.168.137.1:7070/?k=k7m2q9xa&f=gZ_x2YJh2S2DD_40s0j8a8&s=7071&w=Ferry-Studio-PC&p=abcdefgh2345"))
+        #expect(direct.network == "Ferry-Studio-PC" && direct.host == "192.168.137.1")
+        #expect(s.network == nil)
         let old = try #require(Pairing.parse("http://192.168.1.20:7070/?k=k7m2q9xa"))
         #expect(old.fingerprint == nil && old.tlsPort == nil)
     }

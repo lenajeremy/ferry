@@ -38,16 +38,19 @@ class MainActivity : ComponentActivity() {
         val debug = applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
         // Debug builds (the emulator has no camera): `--es ferryQR <the QR code's link>` pairs as scanning would;
         // `--es ferryUrl http://… --es ferryCode …` as typing the code would. `--es ferryOpen <name>` /
-        // `--ei ferrySelect 3` open the viewer or Select mode.
+        // `--ei ferrySelect 3` open the viewer or Select mode. `--es ferryMoved <address>` saves another
+        // address for the computer shown, as if it had moved since, to watch Ferry find it again.
         if (debug && savedInstanceState == null) {
             val qr = intent.getStringExtra("ferryQR")?.let { Pairing.parse(it) }
             val url = intent.getStringExtra("ferryUrl")
             val code = intent.getStringExtra("ferryCode")
+            val moved = intent.getStringExtra("ferryMoved")
             lifecycleScope.launch {
                 runCatching {
                     when {
-                        qr != null -> lib.pair(FerryApi.pair(this@MainActivity, qr))
+                        qr != null -> lib.pair(qr)
                         url != null && code != null -> lib.pair(FerryApi.pair(this@MainActivity, url, code))
+                        moved != null -> lib.pretendMoved(moved)
                     }
                 }.onFailure {
                     android.util.Log.w("Ferry", "debug pairing: ${it.message}")

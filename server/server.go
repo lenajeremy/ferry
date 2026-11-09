@@ -38,11 +38,14 @@ type Server struct {
 	devices *Devices
 	peers   *Peers
 	finder  *finder
-	port    int
-	tlsPort int // 0: no secure address
-	caDER   []byte
-	folder  string // the shared folder, as shown ("~/Ferry")
-	web     fs.FS
+	hotspot *hotspotManager
+	// lookedFor: when each paired computer that went missing was last looked for (relocate).
+	lookedFor sync.Map
+	port      int
+	tlsPort   int // 0: no secure address
+	caDER     []byte
+	folder    string // the shared folder, as shown ("~/Ferry")
+	web       fs.FS
 
 	mux *http.ServeMux
 	hub hub
@@ -74,6 +77,9 @@ func NewServer(s *Server) *Server {
 	if s.finder == nil {
 		s.finder = newFinder(s.id, func() {})
 	}
+	if s.hotspot == nil {
+		s.hotspot = newHotspotManager()
+	}
 	m := http.NewServeMux()
 	m.HandleFunc("GET /{$}", s.index)
 	m.HandleFunc("GET /icon.png", s.static("icon.png", "image/png"))
@@ -89,7 +95,11 @@ func NewServer(s *Server) *Server {
 	m.HandleFunc("GET /f/{name}", s.file)
 	m.HandleFunc("GET /thumb/{name}", s.thumb)
 	m.HandleFunc("GET /qr.svg", s.qr)
+	m.HandleFunc("GET /wifi-qr.svg", s.wifiQR)
 	m.HandleFunc("GET /ferry.cer", s.authority)
+	m.HandleFunc("GET /api/hotspot", s.getHotspot)
+	m.HandleFunc("POST /api/hotspot", s.startHotspot)
+	m.HandleFunc("DELETE /api/hotspot", s.stopHotspot)
 	m.HandleFunc("GET /api/devices", s.listDevices)
 	m.HandleFunc("DELETE /api/devices/{id}", s.removeDevice)
 	m.HandleFunc("DELETE /api/devices/self", s.removeSelf)
@@ -113,24 +123,31 @@ func (s *Server) h() Host { return *s.current.Load() }
 // for the secure page, so it keeps working by address as well as by name.
 func (s *Server) watchNetwork() {
 	for range time.Tick(30 * time.Second) {
-		now := DiscoverHost()
-		before := s.h()
-		if fmt.Sprint(now) == fmt.Sprint(before) {
-			continue
-		}
-		s.current.Store(&now)
-		log.Printf("network changed: %s, %v", now.LocalName, now.IPs)
-		if s.ca != nil {
-			if cert, err := s.issue(now); err == nil {
-				s.cert.Store(&cert)
-			}
+		s.refreshNetworkNow()
+	}
+}
+
+func (s *Server) refreshNetworkNow() {
+	now := DiscoverHost()
+	if fmt.Sprint(now) == fmt.Sprint(s.h()) {
+		return
+	}
+	s.current.Store(&now)
+	log.Printf("network changed: %s, %v", now.LocalName, now.IPs)
+	if s.ca != nil {
+		if cert, err := s.issue(now); err == nil {
+			s.cert.Store(&cert)
 		}
 	}
 }
 
 func (s *Server) issue(h Host) (tls.Certificate, error) {
 	ips := append([]net.IP{net.IPv4(127, 0, 0, 1), net.IPv6loopback}, h.IPs...)
-	return s.ca.Issue([]string{h.LocalName, "localhost"}, ips)
+	names := []string{h.LocalName, "localhost"}
+	if builtinMDNS() {
+		names = append(names, builtinName(h.Name)) // the name the apps find it by on Windows and Linux
+	}
+	return s.ca.Issue(names, ips)
 }
 
 // MARK: Access
@@ -153,6 +170,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		q.Del("k")
 		q.Del("f")
 		q.Del("s")
+		q.Del("w")
+		q.Del("p")
 		u := *r.URL
 		u.RawQuery = q.Encode()
 		http.Redirect(w, r, u.RequestURI(), http.StatusSeeOther)
@@ -189,6 +208,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if isPaired {
 		r = r.WithContext(context.WithValue(r.Context(), deviceKey{}, dev))
+		if t := s.h().Tailnet; t != "" {
+			w.Header().Set(tailnetHeader, t)
+		}
 	}
 	s.mux.ServeHTTP(w, r)
 }
@@ -344,10 +366,13 @@ type Info struct {
 	// SecureURL is the HTTPS address (with the code, as the phone may reach it by another name).
 	SecureURL string `json:"secureURL,omitempty"`
 	// Only for this Mac: how a phone gets in.
-	PhoneURL   string `json:"phoneURL,omitempty"`
-	PhoneIPURL string `json:"phoneIPURL,omitempty"`
-	Code       string `json:"code,omitempty"`
-	Folder     string `json:"folder,omitempty"`
+	PhoneURL   string        `json:"phoneURL,omitempty"`
+	PhoneIPURL string        `json:"phoneIPURL,omitempty"`
+	Code       string        `json:"code,omitempty"`
+	Folder     string        `json:"folder,omitempty"`
+	Hotspot    *HotspotState `json:"hotspot,omitempty"`
+	// Its Tailscale address, which the apps keep for when they're away from home.
+	Tailnet string `json:"tailnet,omitempty"`
 	// How this computer names things: "darwin"/"windows"/"linux", its file manager, its bin.
 	OS          string `json:"os"`
 	FileManager string `json:"fileManager"`
@@ -355,7 +380,7 @@ type Info struct {
 }
 
 func (s *Server) info(r *http.Request, device string) Info {
-	in := Info{ID: s.id, Host: s.h().Name, Device: device, Local: s.local(r), Secure: r.TLS != nil,
+	in := Info{ID: s.id, Host: s.h().Name, Device: device, Local: s.local(r), Secure: r.TLS != nil, Tailnet: s.h().Tailnet,
 		OS: runtime.GOOS, FileManager: fileManager(), Trash: trashName()}
 	if d, ok := requestDevice(r); ok {
 		in.DeviceID = d.ID
@@ -373,25 +398,42 @@ func (s *Server) info(r *http.Request, device string) Info {
 		code := s.Code()
 		in.Code = code[:4] + " " + code[4:]
 		in.Folder = s.folder
+		if s.hotspot != nil {
+			hs := s.hotspot.state()
+			in.Hotspot = &hs
+		}
 	}
 	return in
 }
 
 // phoneURLs: by Bonjour name (keeps working when the Mac's address changes) and by address.
-// For the apps, the link also carries the certificate's fingerprint (f) and the secure port (s):
-// they check the one against the other before sending the code. Browsers ignore both.
+// For the apps, the link also carries the certificate's fingerprint (f), the secure port (s),
+// and when this computer's direct Wi-Fi hotspot is on, its network name (w) and password (p).
 func (s *Server) phoneURLs() (byName, byIP string) {
 	extra := ""
 	if fp := s.fingerprint(); fp != "" && s.tlsPort > 0 {
 		extra = fmt.Sprintf("&f=%s&s=%d", fp, s.tlsPort)
 	}
+	var hs HotspotState
+	if s.hotspot != nil {
+		hs = s.hotspot.state()
+		if hs.Active && hs.SSID != "" {
+			extra += fmt.Sprintf("&w=%s&p=%s", url.QueryEscape(hs.SSID), url.QueryEscape(hs.Password))
+		}
+	}
 	if s.h().LocalName != "" {
 		byName = fmt.Sprintf("http://%s:%d/?k=%s%s", s.h().LocalName, s.port, s.Code(), extra)
 	}
-	if len(s.h().IPs) > 0 {
-		byIP = fmt.Sprintf("http://%s:%d/?k=%s%s", s.h().IPs[0], s.port, s.Code(), extra)
+	ipAddr := ""
+	if hs.Active && hs.IP != "" {
+		ipAddr = hs.IP
+	} else if len(s.h().IPs) > 0 {
+		ipAddr = s.h().IPs[0].String()
 	}
-	if byName == "" || s.h().PreferIP && byIP != "" {
+	if ipAddr != "" {
+		byIP = fmt.Sprintf("http://%s:%d/?k=%s%s", ipAddr, s.port, s.Code(), extra)
+	}
+	if byName == "" || (s.h().PreferIP || hs.Active) && byIP != "" {
 		byName = byIP
 	}
 	return

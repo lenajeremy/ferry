@@ -91,6 +91,8 @@ func Run(ctx context.Context, cfg Config) error {
 	srv := NewServer(&Server{store: store, thumbs: thumbs, host: host, code: code, id: id, appDir: cfg.DataDir, devices: devices,
 		peers: peers, port: cfg.Port, folder: shown, web: web})
 	srv.finder = newFinder(id, srv.computersChanged)
+	cleanUpHotspot()
+	defer srv.hotspot.stop()
 
 	plain := &http.Server{Handler: srv, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 2 * time.Minute}
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port))
@@ -120,6 +122,9 @@ func Run(ctx context.Context, cfg Config) error {
 	if cfg.Bonjour {
 		stop := advertise(host, cfg.Port, srv.tlsPort, srv.id, srv.fingerprint(), srv.finder)
 		defer stop()
+		if secure != nil {
+			peerToPeer(ctx, secure, cfg.DataDir, host.Name, srv.id, srv.fingerprint())
+		}
 	}
 	// Other computers running Ferry: macOS lists them with dns-sd (elsewhere the announcer hears them).
 	if runtime.GOOS == "darwin" && os.Getenv("FERRY_MDNS") != "builtin" {
@@ -219,6 +224,20 @@ func (quietHandshakes) Write(p []byte) (int, error) {
 	return os.Stderr.Write(p)
 }
 
+// builtinMDNS: Ferry answers for itself on the network (Windows, Linux), not macOS's dns-sd.
+func builtinMDNS() bool { return runtime.GOOS != "darwin" || os.Getenv("FERRY_MDNS") == "builtin" }
+
+// builtinName is the .local name Ferry's own announcer answers to ("studio-pc-ferry.local"), which its
+// certificate covers too.
+func builtinName(computer string) string {
+	return strings.Trim(strings.ToLower(strings.Map(func(r rune) rune {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' {
+			return r
+		}
+		return '-'
+	}, computer)), "-") + "-ferry.local"
+}
+
 // advertise announces Ferry on the network with Bonjour (_ferry._tcp), so the phone apps find this
 // computer without an address: with macOS's dns-sd, elsewhere with Ferry's own responder. The
 // apps tell computers apart by id, and recognise the one they paired with when its address changes.
@@ -227,20 +246,13 @@ func advertise(host Host, port, tlsPort int, id, fingerprint string, f *finder) 
 	if tlsPort > 0 && fingerprint != "" {
 		txt = append(txt, fmt.Sprintf("tls=%d", tlsPort), "fp="+fingerprint)
 	}
-	if runtime.GOOS != "darwin" || os.Getenv("FERRY_MDNS") == "builtin" {
-		label := strings.Trim(strings.ToLower(strings.Map(func(r rune) rune {
-			if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' {
-				return r
-			}
-			return '-'
-		}, host.Name)), "-")
-		return advertiseBuiltin(host, port, append(txt, "host="+label+"-ferry.local"), f)
+	if builtinMDNS() {
+		return advertiseBuiltin(host, port, append(txt, "host="+builtinName(host.Name)), f)
 	}
 	if host.LocalName != "" {
 		txt = append(txt, "host="+host.LocalName)
 	}
-	args := append([]string{"-R", host.Name, "_ferry._tcp", "local", fmt.Sprint(port)}, txt...)
-	cmd := exec.Command("dns-sd", args...)
+	cmd := exec.Command("dns-sd", append([]string{"-R", host.Name, "_ferry._tcp", "local", fmt.Sprint(port)}, txt...)...)
 	if err := cmd.Start(); err != nil {
 		log.Printf("couldn't announce Ferry on the network: %v", err)
 		return func() {}

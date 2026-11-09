@@ -161,3 +161,88 @@ func TestAPhonePairingAgainReplacesItsEntry(t *testing.T) {
 		t.Fatalf("unpairing itself: %d", w.Code)
 	}
 }
+
+func TestAComputerThatMovedIsFoundAgain(t *testing.T) {
+	mac := newComputer(t, "mac1", "MacBook Pro", "macmac22")
+	pc := newComputer(t, "pc1", "Studio PC", "pcpcpc33")
+	if w := mac.local(t, "POST", "/api/computers/pair", `{"address":"`+pc.plain+`","code":"pcpcpc33"}`); w.Code != 200 {
+		t.Fatalf("pairing: %d %s", w.Code, w.Body)
+	}
+	// The PC left where it was (nothing answers there now); Bonjour hears it at its new address.
+	mac.peers.moved("pc1", "::1")
+	mac.finder.put("Studio PC", Nearby{ID: "pc1", Name: "Studio PC", Host: "127.0.0.1", Port: 1})
+
+	start := time.Now()
+	w := mac.local(t, "GET", "/api/computers/pc1/files", "")
+	if w.Code != 200 {
+		t.Fatalf("looking at the PC's files after it moved: %d %s", w.Code, w.Body)
+	}
+	if p, _ := mac.peers.Get("pc1"); p.Host != "127.0.0.1" {
+		t.Errorf("the PC's address is still %q", p.Host)
+	}
+	if d := time.Since(start); d > 3*time.Second {
+		t.Errorf("finding it took %v", d)
+	}
+}
+
+func TestAComputerAwayIsFoundOverTailscale(t *testing.T) {
+	mac := newComputer(t, "mac1", "MacBook Pro", "macmac22")
+	pc := newComputer(t, "pc1", "Studio PC", "pcpcpc33")
+	if w := mac.local(t, "POST", "/api/computers/pair", `{"address":"`+pc.plain+`","code":"pcpcpc33"}`); w.Code != 200 {
+		t.Fatalf("pairing: %d %s", w.Code, w.Body)
+	}
+	// Any answer from the PC tells the Mac its Tailscale address. (127.0.0.1 stands in for one here.)
+	h := pc.h()
+	h.Tailnet = "127.0.0.1"
+	pc.current.Store(&h)
+	if w := mac.local(t, "GET", "/api/computers/pc1/files", ""); w.Code != 200 {
+		t.Fatalf("looking at the PC's files: %d %s", w.Code, w.Body)
+	}
+	if p, _ := mac.peers.Get("pc1"); p.Tailnet != "127.0.0.1" {
+		t.Fatalf("the Mac kept Tailscale address %q", p.Tailnet)
+	}
+	// Then the Mac leaves home: nothing answers at the PC's address, and Bonjour hears nothing.
+	mac.peers.moved("pc1", "::1")
+	if w := mac.local(t, "GET", "/api/computers/pc1/files", ""); w.Code != 200 {
+		t.Fatalf("looking at the PC's files from away: %d %s", w.Code, w.Body)
+	}
+	if p, _ := mac.peers.Get("pc1"); p.Host != "127.0.0.1" {
+		t.Errorf("the PC's address is still %q", p.Host)
+	}
+}
+
+func TestOnlyThatComputerCountsAsFound(t *testing.T) {
+	mac := newComputer(t, "mac1", "MacBook Pro", "macmac22")
+	pc := newComputer(t, "pc1", "Studio PC", "pcpcpc33")
+	other := newComputer(t, "pc2", "Somebody's PC", "otherpc4")
+	if w := mac.local(t, "POST", "/api/computers/pair", `{"address":"`+pc.plain+`","code":"pcpcpc33"}`); w.Code != 200 {
+		t.Fatalf("pairing: %d %s", w.Code, w.Body)
+	}
+	p, _ := mac.peers.Get("pc1")
+	if err := reach(t.Context(), p, "127.0.0.1"); err != nil {
+		t.Fatalf("the PC itself: %v", err)
+	}
+	// Another computer at the same address (another Ferry, its own authority) isn't the PC, and is
+	// never sent the key: relocate only moves on a handshake that the PC's authority vouches for.
+	p.TLSPort = other.tlsPort
+	if err := reach(t.Context(), p, "127.0.0.1"); err == nil {
+		t.Fatal("another computer passed for the PC")
+	}
+	mac.finder.put("Somebody's PC", Nearby{ID: "pc1", Name: "Studio PC", Host: "127.0.0.1", Port: 1})
+	p.Host = "::1"
+	if _, ok := mac.relocate(t.Context(), p); ok {
+		t.Fatal("moved the PC to another computer's address")
+	}
+	// And a computer that's gone is looked for at most every 20 seconds.
+	start := time.Now()
+	if _, ok := mac.relocate(t.Context(), p); ok || time.Since(start) > 100*time.Millisecond {
+		t.Errorf("looked again straight away (%v)", time.Since(start))
+	}
+}
+
+func TestGateways(t *testing.T) {
+	got := gateways([]net.IP{net.ParseIP("192.168.0.20"), net.ParseIP("192.168.137.45"), net.ParseIP("10.42.0.1"), net.ParseIP("192.168.2.3")})
+	if strings.Join(got, " ") != "192.168.137.1 192.168.2.1" {
+		t.Errorf("gateways: %v", got)
+	}
+}

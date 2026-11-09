@@ -2,6 +2,7 @@ package app.ferry
 
 import android.content.ContentResolver
 import android.content.Context
+import android.net.Network
 import android.net.Uri
 import android.os.Build
 import android.provider.OpenableColumns
@@ -14,6 +15,7 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 import okhttp3.Call
+import okhttp3.Dns
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
@@ -43,6 +45,7 @@ import java.util.Locale
 import java.util.concurrent.TimeUnit
 import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManagerFactory
+import okhttp3.internal.tls.OkHostnameVerifier
 import javax.net.ssl.X509TrustManager
 
 /**
@@ -59,17 +62,24 @@ data class FerryComputer(
     val ca: String?,         // base64 DER of its certificate authority
     val token: String,
     val code: String? = null, // a pairing from before tokens, until it has been traded in
+    val ssid: String? = null,     // the computer's own Wi-Fi, when it was paired over that
+    val password: String? = null, // that Wi-Fi's password
+    val tailnet: String? = null,  // its Tailscale address, as it last said: how it's reached away from home
 ) {
     val secure get() = tlsPort > 0 && ca != null
     val base get() = if (secure) "https://$host:$tlsPort" else "http://$host:$port"
 
     fun toJson(): JSONObject = JSONObject().put("id", id).put("name", name).put("host", host).put("port", port)
         .put("tlsPort", tlsPort).put("ca", ca ?: JSONObject.NULL).put("token", token)
+        .apply { if (ssid != null) put("ssid", ssid).put("password", password ?: "") }
+        .apply { if (tailnet != null) put("tailnet", tailnet) }
 
     companion object {
         fun from(o: JSONObject) = FerryComputer(
             o.getString("id"), o.getString("name"), o.getString("host"), o.getInt("port"), o.optInt("tlsPort"),
             o.optString("ca").takeIf { it.isNotEmpty() && it != "null" }, o.getString("token"),
+            ssid = o.optString("ssid").takeIf { it.isNotEmpty() }, password = o.optString("password").takeIf { it.isNotEmpty() },
+            tailnet = o.optString("tailnet").takeIf { it.isNotEmpty() },
         )
     }
 }
@@ -109,6 +119,9 @@ class RemovedException(name: String) : FerryException("This phone was removed fr
 /** The code typed or scanned isn't the computer's (any more). */
 class WrongCodeException(message: String) : FerryException(message)
 
+/** Nothing answered at the computer's address: it's on another network, or Ferry isn't running there. */
+class UnreachableException(message: String) : FerryException(message)
+
 /** "1 photo", "3 videos", "2 files" (mixed kinds are files). */
 fun describe(kinds: List<String>): String {
     val one = mapOf("image" to "photo", "video" to "video")[kinds.firstOrNull()] ?: "file"
@@ -137,8 +150,14 @@ fun sizeLabel(bytes: Long): String = when {
     else -> "$bytes bytes"
 }
 
-/** What the QR code on a computer's page says: where Ferry is, its code, and (newer computers) its certificate's fingerprint and secure port. */
-data class QrLink(val host: String, val port: Int, val code: String, val fingerprint: String?, val tlsPort: Int)
+/**
+ * What the QR code on a computer's page says: where Ferry is, its code, and (newer computers) its certificate's
+ * fingerprint and secure port. While the computer's own Wi-Fi is on, also that Wi-Fi's name and password.
+ */
+data class QrLink(
+    val host: String, val port: Int, val code: String, val fingerprint: String?, val tlsPort: Int,
+    val ssid: String? = null, val password: String? = null,
+)
 
 /** The computers this phone is paired with, and which one it shows, in the app's own preferences. */
 object Pairing {
@@ -174,6 +193,13 @@ object Pairing {
         return list
     }
 
+    /** Keeps a paired computer's new address, without changing which one is shown. */
+    fun update(context: Context, c: FerryComputer): List<FerryComputer> {
+        val list = computers(context).map { if (it.id == c.id) c else it }
+        save(context, list, prefs(context).getString("current", null))
+        return list
+    }
+
     /** A pairing kept by an older Ferry: the computer's address and its code. */
     private fun legacy(context: Context): FerryComputer? {
         val p = prefs(context)
@@ -184,14 +210,19 @@ object Pairing {
 
     fun dropLegacy(context: Context) = prefs(context).edit().remove("url").remove("code").remove("name").remove("fallback").apply()
 
-    /** Reads the QR code on Ferry's computer page: http://<computer>:7070/?k=<code>&f=<fingerprint>&s=<secure port>. */
+    /**
+     * Reads the QR code on Ferry's computer page: http://<computer>:7070/?k=<code>&f=<fingerprint>&s=<secure port>,
+     * and &w=<Wi-Fi name>&p=<password> while the computer's own Wi-Fi is on (escaped as in a form: + is a space).
+     */
     fun parse(text: String): QrLink? {
         val url = text.trim().toHttpUrlOrNull() ?: return null
         val code = url.queryParameter("k") ?: return null
         if (normalise(code).length < 6) return null
         val fp = url.queryParameter("f")?.takeIf { it.length >= 16 }
         val tls = url.queryParameter("s")?.toIntOrNull() ?: 0
-        return QrLink(url.host, url.port, normalise(code), fp, if (fp != null) tls else 0)
+        val ssid = url.queryParameter("w")?.takeIf { it.isNotEmpty() }
+        val password = if (ssid != null) url.queryParameter("p")?.takeIf { it.isNotEmpty() } else null
+        return QrLink(url.host, url.port, normalise(code), fp, if (fp != null) tls else 0, ssid, password)
     }
 
     fun normalise(code: String) = code.lowercase().filter { it.isLetterOrDigit() }
@@ -355,19 +386,19 @@ class FerryApi(val computer: FerryComputer) {
     companion object {
         private fun unreachable(e: IOException): FerryException =
             if (e is javax.net.ssl.SSLException) FerryException("This isn't the computer this phone paired with. Connect again if it was reset.")
-            else FerryException("Can't reach your computer. Is Ferry running there, and is this phone on the same Wi-Fi?")
+            else UnreachableException("Can't reach your computer. Is Ferry running there, and is this phone on the same Wi-Fi?")
 
         /** Base64url (no padding) of the certificate's SHA-256, first 22 characters, as in the QR code and on Bonjour. */
         fun fingerprint(der: ByteArray): String =
             Base64.encodeToString(MessageDigest.getInstance("SHA-256").digest(der), Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP).take(22)
 
         /** Ferry's certificate authority on a computer, from its page (public; checked against a fingerprint before it's trusted). */
-        private fun fetchAuthority(host: String, port: Int): ByteArray? {
+        private fun fetchAuthority(host: String, port: Int, network: Network? = null): ByteArray? {
             val r = Request.Builder().url("http://$host:$port/ferry.cer").build()
             val response = try {
-                Net.plain.newCall(r).execute()
+                Net.over(network).newCall(r).execute()
             } catch (e: IOException) {
-                throw FerryException("Can't reach that computer. Is it on the same Wi-Fi as this phone?")
+                throw UnreachableException("Can't reach that computer. Is it on the same Wi-Fi as this phone?")
             }
             return response.use { if (it.isSuccessful) it.body?.bytes() else null }
         }
@@ -377,25 +408,32 @@ class FerryApi(val computer: FerryComputer) {
          * computer has one. [fingerprint] (from the QR code, or Bonjour) must match the certificate the
          * computer hands over before the code is sent; a computer without a secure port pairs as before.
          * [previous] is this phone's old token there, when pairing again, so the computer replaces its entry.
+         * [network] is the computer's own Wi-Fi, when this phone joined it to pair.
          */
-        suspend fun pair(context: Context, host: String, port: Int, code: String, tlsPort: Int, fingerprint: String?, previous: String? = null): FerryComputer =
+        suspend fun pair(
+            context: Context, host: String, port: Int, code: String, tlsPort: Int, fingerprint: String?,
+            previous: String? = null, network: Network? = null,
+        ): FerryComputer =
             withContext(Dispatchers.IO) {
                 var ca: ByteArray? = null
                 var base = "http://$host:$port"
-                var client = Net.plain
+                var client = Net.over(network)
                 if (tlsPort > 0) {
-                    ca = fetchAuthority(host, port) ?: throw FerryException("That computer didn't hand over its certificate. Is Ferry up to date there?")
+                    ca = fetchAuthority(host, port, network) ?: throw FerryException("That computer didn't hand over its certificate. Is Ferry up to date there?")
                     if (fingerprint != null && fingerprint(ca) != fingerprint) {
                         throw FerryException("This computer isn't the one showing that code. Scan it again from your computer's screen.")
                     }
                     base = "https://$host:$tlsPort"
-                    client = Net.pinned(ca)
+                    client = Net.pinned(ca, Net.over(network))
                 }
                 val body = JSONObject().put("code", Pairing.normalise(code)).put("name", Pairing.deviceName(context)).put("kind", "Android")
                 if (previous != null) body.put("previous", previous)
                 val r = Request.Builder().url("$base/api/pair").post(body.toString().toRequestBody("application/json".toMediaType())).build()
                 val response = try {
                     client.newCall(r).execute()
+                } catch (e: javax.net.ssl.SSLException) {
+                    // Its certificate authority matched the code, but what answers on the secure port doesn't prove it's that computer.
+                    throw FerryException("Couldn't check this is the computer you scanned. Scan the code on its screen again.")
                 } catch (e: IOException) {
                     throw unreachable(e)
                 }
@@ -417,9 +455,9 @@ class FerryApi(val computer: FerryComputer) {
                 )
             }
 
-        /** Pairs from a scanned QR code. */
-        suspend fun pair(context: Context, link: QrLink, previous: String? = null) =
-            pair(context, link.host, link.port, link.code, link.tlsPort, link.fingerprint, previous)
+        /** Pairs from a scanned QR code (over the computer's own Wi-Fi, [network], when this phone joined it for that). */
+        suspend fun pair(context: Context, link: QrLink, previous: String? = null, network: Network? = null) =
+            pair(context, link.host, link.port, link.code, link.tlsPort, link.fingerprint, previous, network)
 
         /**
          * Pairs with a computer known only by its address (a debug launch): its secure port is the next one, as
@@ -455,8 +493,8 @@ class FerryApi(val computer: FerryComputer) {
 
 /**
  * HTTP clients. Each paired computer gets its own: it trusts only that computer's certificate authority
- * and signs in with this phone's token. Images (Coil) and videos (Media3) go through [calls], which
- * picks the client by the address being fetched.
+ * and signs in with this phone's token, and goes over the computer's own Wi-Fi while this phone is on that
+ * for it. Images (Coil) and videos (Media3) go through [calls], which picks the client by the address being fetched.
  */
 object Net {
     /** The paired computers, kept in step with [Pairing]. */
@@ -470,32 +508,55 @@ object Net {
 
     private val clients = mutableMapOf<String, OkHttpClient>()
 
-    /** Trusts [caDER] alone, and checks the computer's name or address against its certificate as usual. */
-    fun pinned(caDER: ByteArray, base: OkHttpClient = plain): OkHttpClient {
+    /**
+     * [base] going over [network] (a computer's own Wi-Fi, which isn't the phone's default network), with
+     * names looked up there too. Without one, [base] as it is.
+     */
+    fun over(network: Network?, base: OkHttpClient = plain): OkHttpClient =
+        if (network == null) base
+        else base.newBuilder().socketFactory(network.socketFactory).dns(object : Dns {
+            override fun lookup(hostname: String) = network.getAllByName(hostname).toList()
+        }).build()
+
+    /**
+     * What a computer's certificate is checked for at [host]: that address, except its Tailscale one. A
+     * computer's authority can only vouch for home-network addresses, so its certificate never lists that
+     * one, and it's checked for a name the certificate always has.
+     */
+    fun certificateName(host: String, tailnet: String?) = if (host == tailnet) "localhost" else host
+
+    /** Trusts [caDER] alone, and checks the computer's name or address against its certificate. */
+    fun pinned(caDER: ByteArray, base: OkHttpClient = plain, tailnet: String? = null): OkHttpClient {
         val ca = CertificateFactory.getInstance("X.509").generateCertificate(ByteArrayInputStream(caDER)) as X509Certificate
         val keys = KeyStore.getInstance(KeyStore.getDefaultType()).apply { load(null, null); setCertificateEntry("ferry", ca) }
         val trust = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm()).apply { init(keys) }
             .trustManagers.filterIsInstance<X509TrustManager>().first()
         val tls = SSLContext.getInstance("TLS").apply { init(null, arrayOf(trust), null) }
-        return base.newBuilder().sslSocketFactory(tls.socketFactory, trust).build()
+        return base.newBuilder().sslSocketFactory(tls.socketFactory, trust)
+            .apply { if (tailnet != null) hostnameVerifier { host, session -> OkHostnameVerifier.verify(certificateName(host, tailnet), session) } }
+            .build()
     }
 
-    /** The client for one computer: pinned to its authority (when it has a secure port), with its token. */
+    /**
+     * The client for one computer: pinned to its authority (when it has a secure port), with its token, and
+     * over its own Wi-Fi while this phone is on that for it.
+     */
     fun clientFor(c: FerryComputer): OkHttpClient = synchronized(clients) {
-        clients.getOrPut("${c.id}|${c.token}|${c.ca?.hashCode()}") {
+        val network = DirectWifi.network(c.id)
+        clients.getOrPut("${c.id}|${c.token}|${c.ca?.hashCode()}|${network?.networkHandle}|${c.tailnet}") {
             val auth = Interceptor { chain ->
                 val r = chain.request()
                 chain.proceed(if (c.token.isNotEmpty() && r.header("Authorization") == null) r.newBuilder().header("Authorization", "Ferry ${c.token}").build() else r)
             }
-            val signed = plain.newBuilder().addInterceptor(auth).build()
-            c.ca?.let { pinned(Base64.decode(it, Base64.DEFAULT), signed) } ?: signed
+            val signed = over(network).newBuilder().addInterceptor(auth).build()
+            c.ca?.let { pinned(Base64.decode(it, Base64.DEFAULT), signed, c.tailnet) } ?: signed
         }
     }
 
     /** Requests for images and videos: each goes through the client of the computer it's addressed to. */
     val calls = Call.Factory { request ->
         val u = request.url
-        val c = computers.firstOrNull { it.host == u.host && (if (it.secure) it.tlsPort else it.port) == u.port }
+        val c = computers.firstOrNull { (it.host == u.host || it.tailnet == u.host) && (if (it.secure) it.tlsPort else it.port) == u.port }
         (c?.let { clientFor(it) } ?: plain).newCall(request)
     }
 }

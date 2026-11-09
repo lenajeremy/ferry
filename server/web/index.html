@@ -325,14 +325,22 @@ kbd { font: 600 12px ui-monospace, "SF Mono", Menlo, monospace; padding: 2px 6px
   <aside class="aside" id="aside" hidden>
     <div class="card">
       <h3>Open Ferry on your phone</h3>
-      <p>Point your phone's camera at this code. It needs to be on the same Wi-Fi as this computer.</p>
+      <p id="qrSub">Point your phone's camera at this code. It needs to be on the same Wi-Fi as this computer.</p>
       <div class="qr" id="qr" role="img" aria-label="QR code for Ferry's address"></div>
-      <div class="pair-code"><b class="mono" id="code"></b><small>or type this code on the phone</small></div>
+      <div class="pair-code"><b class="mono" id="code"></b><small id="codeHint">or type this code on the phone</small></div>
       <div class="new-code"><button type="button" id="newCode">New code</button></div>
       <div class="link-line"><span id="phoneLink"></span><button type="button" id="copyLink">Copy</button></div>
       <div class="row" style="justify-content:center;margin-top:8px">
         <button class="btn quiet" id="qrToggle" type="button" style="font-size:13px"></button>
       </div>
+      <div id="directBox" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line)" hidden>
+        <div id="directInfo" style="font-size:12.5px;color:var(--ink2)"></div>
+        <div class="row" id="directRow" style="margin-top:8px" hidden>
+          <button class="btn" id="directBtn" type="button" style="font-size:13px;padding:8px 12px;width:100%;justify-content:center"></button>
+          <button class="btn quiet" id="wifiQrBtn" type="button" style="font-size:12.5px;width:100%;justify-content:center" hidden></button>
+        </div>
+      </div>
+      <div id="awayInfo" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line);font-size:12.5px;color:var(--ink2)" hidden></div>
     </div>
     <div class="card" id="computersCard">
       <h3>Other computers</h3>
@@ -497,6 +505,9 @@ function connect() {
   es.addEventListener('code', async () => {
     try { state.info = await (await fetch('/api/info', { cache: 'no-store' })).json(); renderChrome(); } catch {}
   });
+  es.addEventListener('hotspot', async () => {
+    try { state.info = await (await fetch('/api/info', { cache: 'no-store' })).json(); renderChrome(); } catch {}
+  });
   es.onopen = () => { state.connected = true; renderStatus(); };
   es.onerror = async () => {
     state.connected = false;
@@ -540,6 +551,8 @@ function announce(files) {
 
 // MARK: Chrome
 
+let showingWifiQR = false;
+
 function renderChrome() {
   const info = state.info;
   if (!info) return;
@@ -555,6 +568,12 @@ function renderChrome() {
     $('#folderName').textContent = info.folder;
     $('#folderName').title = info.folder;
     $('#pasteKey').textContent = info.os === 'darwin' ? '⌘V' : 'Ctrl+V';
+    if (!info.hotspot?.active) showingWifiQR = false;
+    renderDirect(info.hotspot);
+    const phoneLink = info.phoneURL || info.phoneIPURL;
+    $('#awayInfo').hidden = !info.tailnet;
+    $('#awayInfo').textContent = !info.tailnet ? '' : 'Away from home? Turn on Tailscale on your phone and the Ferry app finds this computer by itself.'
+      + (phoneLink ? ` In a browser, open http://${info.tailnet}:${new URL(phoneLink).port}.` : '');
     showQR(qrByIP);
     loadDevices();
     loadComputers();
@@ -567,6 +586,56 @@ function renderChrome() {
   renderList();
 }
 
+function renderDirect(hs) {
+  const box = $('#directBox'), infoEl = $('#directInfo'), row = $('#directRow'), btn = $('#directBtn'), wifiBtn = $('#wifiQrBtn');
+  if (!hs) { box.hidden = true; return; }
+  box.hidden = false;
+  if (hs.active) {
+    infoEl.innerHTML = `<b>Direct Wi‑Fi is on:</b> <span class="mono">${esc(hs.ssid)}</span> · password <span class="mono">${esc(hs.password)}</span>`;
+    row.hidden = false;
+    btn.textContent = 'Turn off direct Wi‑Fi';
+    wifiBtn.hidden = false;
+    wifiBtn.textContent = showingWifiQR ? 'Show Ferry’s code' : 'Phone not on it yet? Show the Wi‑Fi code';
+  } else if (hs.supported) {
+    infoEl.textContent = 'No Wi‑Fi around? This computer can make a Wi‑Fi network of its own for your phones, with no internet needed.'
+      + (hs.warning ? ' ' + hs.warning : '');
+    row.hidden = false;
+    btn.textContent = 'Start direct Wi‑Fi';
+    wifiBtn.hidden = true;
+  } else if (hs.peerP2P) {
+    infoEl.textContent = 'No Wi‑Fi around? iPhones with the Ferry app still reach this Mac nearby, as long as their Wi‑Fi is switched on (it needn’t join a network). Android phones: turn on the phone’s hotspot and join it from this Mac.';
+    row.hidden = true;
+  } else {
+    infoEl.textContent = 'No Wi‑Fi around? Turn on your phone’s hotspot and join it from this computer. Ferry sends straight between them and uses no mobile data.';
+    row.hidden = true;
+  }
+}
+
+$('#directBtn').onclick = async () => {
+  const hs = state.info?.hotspot;
+  $('#directBtn').disabled = true;
+  $('#directBtn').textContent = hs?.active ? 'Stopping…' : 'Starting direct Wi‑Fi…';
+  try {
+    const r = await fetch('/api/hotspot', { method: hs?.active ? 'DELETE' : 'POST', headers: { 'X-Ferry': '1' } });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || 'Couldn’t change direct Wi‑Fi');
+    state.info = await (await fetch('/api/info', { cache: 'no-store' })).json();
+    renderChrome();
+    toast(d.active ? `Direct Wi‑Fi "${d.ssid}" is on` : 'Direct Wi‑Fi turned off');
+  } catch (err) {
+    toast(err.message || 'Couldn’t start direct Wi‑Fi');
+    renderDirect(state.info?.hotspot);
+  } finally {
+    $('#directBtn').disabled = false;
+  }
+};
+
+$('#wifiQrBtn').onclick = () => {
+  showingWifiQR = !showingWifiQR;
+  renderDirect(state.info?.hotspot);
+  showQR(qrByIP);
+};
+
 let qrByIP = false;
 async function showQR(byIP) {
   qrByIP = byIP;
@@ -574,9 +643,17 @@ async function showQR(byIP) {
   const link = byIP ? info.phoneIPURL : info.phoneURL;
   $('#phoneLink').textContent = link.replace(/\/\?k=.*$/, '');
   $('#qrToggle').textContent = byIP ? 'Use the computer’s name instead' : 'Not opening? Use its address instead';
-  $('#qrToggle').hidden = !info.phoneIPURL || info.phoneIPURL === info.phoneURL;
+  $('#qrToggle').hidden = showingWifiQR || !info.phoneIPURL || info.phoneIPURL === info.phoneURL;
+  $('#qrSub').textContent = showingWifiQR
+    ? `First, scan this with your phone's Camera to join "${info.hotspot?.ssid}". Then show Ferry's code and scan that.`
+    : info.hotspot?.active
+      ? `Scan this once your phone is on "${info.hotspot.ssid}" (this computer's own Wi‑Fi).`
+      : info.os === 'darwin'
+        ? `Point your phone's camera at this code. It needs the same Wi‑Fi as this computer, or for the iPhone app, just to be nearby.`
+        : `Point your phone's camera at this code. It needs to be on the same Wi-Fi as this computer.`;
   try {
-    const r = await fetch('/qr.svg' + (byIP ? '?ip=1' : ''), { cache: 'no-store' });
+    const url = showingWifiQR ? '/wifi-qr.svg' : ('/qr.svg' + (byIP ? '?ip=1' : ''));
+    const r = await fetch(url, { cache: 'no-store' });
     if (r.ok) $('#qr').innerHTML = await r.text(); // drawn by Ferry itself
   } catch {}
 }

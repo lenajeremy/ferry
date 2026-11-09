@@ -45,7 +45,9 @@ final class ShareModel {
         total = providers.count
         let work = Task {
             do {
-                let api = FerryAPI(computer)
+                // Where it was, where it went, or a Mac nearby with no network in common.
+                guard let found = await Reconnect.find(computer) else { throw FerryError.unreachable }
+                let api = FerryAPI(found)
                 _ = try await api.info()
                 for (i, provider) in providers.enumerated() {
                     try Task.checkCancellation()

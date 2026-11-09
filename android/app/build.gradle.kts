@@ -71,4 +71,7 @@ dependencies {
     implementation("androidx.media3:media3-ui:1.8.0")
     implementation("androidx.media3:media3-datasource-okhttp:1.8.0")
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
+
+    // The JVM tests (src/test) run on the JUnit 4 that comes with Gradle itself, so they download nothing.
+    testImplementation(fileTree("${gradle.gradleHomeDir}/lib") { include("junit-4*.jar", "hamcrest-core-*.jar") })
 }

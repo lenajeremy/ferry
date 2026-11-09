@@ -70,8 +70,10 @@ class ShareActivity : ComponentActivity() {
                     if (computer.token.isEmpty()) { phase = Phase.Failed("Open Ferry once to finish connecting to ${computer.name}."); return@LaunchedEffect }
                     if (uris.isEmpty()) { phase = Phase.Failed("There's nothing in that to send."); return@LaunchedEffect }
                     try {
-                        // The computer Ferry is showing, over its secure port.
-                        val api = FerryApi(computer).also { it.info() }
+                        // The computer Ferry is showing, wherever it is now (a new address is kept), over its secure port.
+                        val here = Reconnect.find(computer, Probes.of(this@ShareActivity, computer)) ?: throw FerryException(Reconnect.nowhere(computer))
+                        if (here.host != computer.host && here.host != computer.tailnet) Pairing.update(this@ShareActivity, here)
+                        val api = FerryApi(here).also { it.info() }
                         uris.forEachIndexed { i, uri ->
                             val (name, size) = FerryApi.describeUri(contentResolver, uri)
                             api.upload(contentResolver, uri, name, size) { p -> progress = (i + p) / uris.size }

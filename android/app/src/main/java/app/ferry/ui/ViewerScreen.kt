@@ -60,7 +60,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.annotation.OptIn
 import androidx.media3.common.MediaItem
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -171,6 +173,8 @@ private fun ZoomableImage(api: FerryApi, f: FerryFile, onZoom: (Boolean) -> Unit
     )
 }
 
+// Ferry's own HTTP client for the player, and hiding the next and previous buttons, are Media3's "unstable" API.
+@OptIn(UnstableApi::class)
 @Composable
 private fun VideoPage(api: FerryApi, f: FerryFile, playing: Boolean) {
     val context = LocalContext.current

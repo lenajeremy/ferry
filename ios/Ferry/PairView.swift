@@ -205,6 +205,8 @@ struct ScanSheet: View {
             library.pair(try await FerryAPI.pair(scanned, device: Library.deviceName, kind: Library.deviceKind,
                                                  previous: library.previousKey(host: scanned.host, port: scanned.port)))
             dismiss()
+        } catch FerryError.unreachable where scanned.network != nil {
+            problem = "Join the Wi-Fi “\(scanned.network!)” first: scan the Wi-Fi code on the computer's screen with the Camera, then scan Ferry's code here."
         } catch {
             problem = (error as? FerryError)?.errorDescription ?? error.localizedDescription
         }
